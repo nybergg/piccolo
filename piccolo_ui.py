@@ -3,7 +3,7 @@ import threading
 import concurrency_tools as ct
 import time
 import math
-from data_generator import DataGenerator
+from piccolo_instrument_sim import DataGenerator
 
 from bokeh.layouts import column, row
 from bokeh.models import (
