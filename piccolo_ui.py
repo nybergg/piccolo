@@ -1,10 +1,11 @@
+# Imports from the python standard library:
+import math
 import numpy as np
 import threading
-import concurrency_tools as ct
 import time
-import math
-from piccolo_instrument_sim import DataGenerator
 
+# Third party imports, installable via pip:
+# -> bokeh graphics and features etc
 from bokeh.layouts import column, row
 from bokeh.models import (
     ColumnDataSource,
@@ -15,19 +16,37 @@ from bokeh.models import (
     LinearColorMapper,
     Spinner,
     Div,
-)
+    )
 from bokeh.models.callbacks import CustomJS
 from bokeh.plotting import curdoc, figure
 from bokeh.events import SelectionGeometry
+# -> bokeh server
+from bokeh.application import Application
+from bokeh.application.handlers.function import FunctionHandler
+from bokeh.server.server import Server
 
+# Our code, one .py file per module, copy files to your local directory:
+import concurrency_tools as ct  # github.com/AndrewGYork/tools
+from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
 
 class UI:
-    """Initialization Methods"""
-
-    def __init__(self):
+    def __init__(self, doc):
+        import sys # import here to keep sys reference on session destroyed
         print("UI init")
+        self.doc = doc
+        self._running = False
+        self.toggle = self._create_toggle()
+        self.doc.add_root(column([self.toggle,]))
+        # Detect if browser is closed:
+        def _session_destroyed(session_context):
+            print('session_destroyed:', session_context.destroyed)
+            sys.exit()
+            return None        
+        self.doc.on_session_destroyed(_session_destroyed)
+
+    def _init_(self):
         self._init_hardware()
-        self._init_ui()
+        self._init_ui()        
 
     def _init_hardware(self):
         # Create an instance of the hardware class that will run in a separate process.
@@ -37,7 +56,6 @@ class UI:
     def _init_ui(self):
         # Initialize UI components
         with self.dg_lock:
-            self.doc = curdoc()
             self.timers = np.zeros(100)
             self._setup_data_sources()
             self._setup_ui_components()
@@ -71,7 +89,6 @@ class UI:
             text_font_size="20pt",
             text_color="black",
         )
-        self.toggle = self._create_toggle()
         self.sliders = self._create_sliders()
         self.bufferspinner = self._create_bufferspinner()
         self.custom_div = self._create_custom_div()
@@ -81,7 +98,6 @@ class UI:
         # Generate Layout
         self.doc.add_root(
             column(
-                self.toggle,
                 row(
                     column(
                         self.sliders[0],
@@ -282,6 +298,9 @@ class UI:
     """ Callback Methods """
 
     def _toggle_changed(self, state):
+        if not self._running:
+            self._init_()
+            self._running = True
         with self.dg_lock:
             if state:
                 self.toggle.label = "Stop"
@@ -381,5 +400,14 @@ class UI:
         rate_seconds_per_update = np.mean(np.diff(self.timers)) * -1
         self.plot.title.text = f"Update Rate: {1/rate_seconds_per_update:.01f} Hz ({rate_seconds_per_update*1000:.00f} ms)"
 
-
-ui = UI()
+if __name__ == '__main__':
+    bk_app = {'/': Application(FunctionHandler(UI))} # doc created here
+    server = Server(
+        bk_app,
+        port=5000, # default 5006
+        # check session status sooner (.on_session_destroyed callback)
+        check_unused_sessions_milliseconds=500,     # default 17000
+        unused_session_lifetime_milliseconds=500)   # default 15000
+    server.start()
+    server.io_loop.add_callback(server.show, "/")
+    server.io_loop.start()
