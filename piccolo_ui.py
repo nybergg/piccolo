@@ -234,7 +234,45 @@ class UI:
             )
         # supress alpha change for nonselected indices bc refresh messes it up
         glyph.nonselection_glyph = None
-        self._boxselect_changed()
+        # Custom javascript callback for box select tool
+        callback = CustomJS(
+            args=dict(source_bx=self.source_bx),
+            code="""
+            // Store selected geometry in variables
+            var geometry = cb_obj.geometry;
+            var x0 = geometry.x0;
+            var y0 = geometry.y0;
+            var x1 = geometry.x1;
+            var y1 = geometry.y1;
+                            
+            // Log the values in the JS console:
+            console.log('Sorting Gate xmin: ', x0);
+            console.log('Sorting Gate ymin: ', y0);
+            console.log('Sorting Gate xmax: ', x1);
+            console.log('Sorting Gate ymax: ', y1);
+            console.log('Geometry: ', geometry);
+
+            // source_bx.data = geometry;
+            source_bx.data = {
+                'x0': [x0],
+                'y0': [y0],
+                'x1': [x1],
+                'y1': [y1]
+            };
+            source_bx.change.emit();
+            """,
+            )
+        # Attach Javascript and callback to plot for 'selectiongeometry' event
+        self.plot2d.js_on_event(SelectionGeometry, callback)
+        def _boxselect_pass(attr, old, new):
+            with self.dg_lock:
+                print("Box Select Callback Triggered")
+                # Pass box values sim through the pipe to set gate values
+                self.dg.set_gate_values(dict(new))
+                # Store box values in ui box_select and update box select text
+                self.boxselect = new
+                self.custom_div.text = self._create_divhtml()        
+        self.source_bx.on_change("data", _boxselect_pass)
         return None
 
     def _create_signal_plot(self):
@@ -336,51 +374,6 @@ class UI:
     def _spinner_changed(self, attr, old, new):
         with self.dg_lock:
             self.buffer_length = self.bufferspinner.value
-
-    def _boxselect_changed(self):
-        # Custom javascript callback for box select tool
-        callback = CustomJS(
-            args=dict(source_bx=self.source_bx),
-            code="""
-            // Store selected geometry in variables
-            var geometry = cb_obj.geometry;
-            var x0 = geometry.x0;
-            var y0 = geometry.y0;
-            var x1 = geometry.x1;
-            var y1 = geometry.y1;
-                            
-            // Log the values in the JS console:
-            console.log('Sorting Gate xmin: ', x0);
-            console.log('Sorting Gate ymin: ', y0);
-            console.log('Sorting Gate xmax: ', x1);
-            console.log('Sorting Gate ymax: ', y1);
-            console.log('Geometry: ', geometry);
-
-            // source_bx.data = geometry;
-            source_bx.data = {
-                'x0': [x0],
-                'y0': [y0],
-                'x1': [x1],
-                'y1': [y1]
-            };
-            source_bx.change.emit();
-        """,
-        )
-
-        # Attach the Javascript and python callbacks to the plot for the 'selectiongeometry' event
-        self.plot2d.js_on_event(SelectionGeometry, callback)
-        self.source_bx.on_change("data", self._boxselect_pass)
-
-    def _boxselect_pass(self, attr, old, new):
-        with self.dg_lock:
-            print("Box Select Callback Triggered")
-
-            # Pass box values to the hardware class through the pipe to set gate values
-            self.dg.set_gate_values(dict(new))
-
-            # Store box values in ui box_select and update box select text
-            self.boxselect = new
-            self.custom_div.text = self._create_divhtml()
 
 if __name__ == '__main__':
     bk_app = {'/': Application(FunctionHandler(UI))} # doc created here
