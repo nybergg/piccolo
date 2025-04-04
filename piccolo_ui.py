@@ -141,6 +141,19 @@ class UI:
         return None
 
     def _create_sliders(self):
+        def _gain1_changed(attr, old, new):
+            with self.dg_lock:
+                self.dg.set_gain(new, 1)
+            return None
+        def _gain2_changed(attr, old, new):
+            with self.dg_lock:
+                self.dg.set_gain(new, 2)
+            return None
+        def _thresh_changed(attr, old, new):
+            with self.dg_lock:
+                self.dg.set_thresh(new)
+                self.thresh_line.location = self.sliders[2].value
+            return None
         slider_margin = (10, 10, 20, 50)
         sliders_info = [
             {
@@ -150,7 +163,7 @@ class UI:
                 "step": 0.01,
                 "title": "PMT 1 Gain",
                 "bar_color": "mediumseagreen",
-                "callback": self._gain1_changed,
+                "callback": _gain1_changed,
             },
             {
                 "start": 0.01,
@@ -159,7 +172,7 @@ class UI:
                 "step": 0.01,
                 "title": "PMT 2 Gain",
                 "bar_color": "royalblue",
-                "callback": self._gain2_changed,
+                "callback": _gain2_changed,
             },
             {
                 "start": 0,
@@ -168,7 +181,7 @@ class UI:
                 "step": 0.01,
                 "title": "PMT 1 Threshold",
                 "bar_color": "mediumseagreen",
-                "callback": self._thresh_changed,
+                "callback": _thresh_changed,
             },
             ]
         self.sliders = []
@@ -187,6 +200,10 @@ class UI:
         return None
 
     def _create_bufferspinner(self):
+        def _spinner_changed(attr, old, new):
+            with self.dg_lock:
+                self.buffer_length = self.bufferspinner.value
+            return None
         self.bufferspinner = Spinner(
             title="Datapoint Count for Scatter Plot",
             low=0,
@@ -196,7 +213,7 @@ class UI:
             width=200,
             margin=(20, 0, 20, 50),
             )
-        self.bufferspinner.on_change("value", self._spinner_changed)
+        self.bufferspinner.on_change("value", _spinner_changed)
         return None
 
     def _create_custom_div(self):
@@ -342,25 +359,6 @@ class UI:
         </div>
         """
         return html_content
-
-    """ Callback Methods """
-
-    def _gain1_changed(self, attr, old, new):
-        with self.dg_lock:
-            self.dg.set_gain(new, 1)
-
-    def _gain2_changed(self, attr, old, new):
-        with self.dg_lock:
-            self.dg.set_gain(new, 2)
-
-    def _thresh_changed(self, attr, old, new):
-        with self.dg_lock:
-            self.dg.set_thresh(new)
-            self.thresh_line.location = self.sliders[2].value
-
-    def _spinner_changed(self, attr, old, new):
-        with self.dg_lock:
-            self.buffer_length = self.bufferspinner.value
 
 if __name__ == '__main__':
     bk_app = {'/': Application(FunctionHandler(UI))} # doc created here
