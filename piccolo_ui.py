@@ -372,7 +372,7 @@ class UI:
             self.custom_div.text = self._create_divhtml()
 
     def update_ui(self):
-        """Pull data from the hardware (in another process) and update the data source and plot"""
+        # Pull data from subprocess and update the datasource and plot:
         with self.dg_lock:
             # Update pmt data
             self.source_PMT1.data = self.dg.data["pmt1"]
@@ -389,14 +389,12 @@ class UI:
 
             self.source_2d.data = self.rolling_source_2d
 
-            self.manage_timers()
-
-    def manage_timers(self):
-        """This is just a simple way to keep track of how long the update_ui function takes to run."""
-        self.timers = np.roll(self.timers, 1)
-        self.timers[0] = time.perf_counter()
-        rate_seconds_per_update = np.mean(np.diff(self.timers)) * -1
-        self.plot.title.text = f"Update Rate: {1/rate_seconds_per_update:.01f} Hz ({rate_seconds_per_update*1000:.00f} ms)"
+            # time update and display:
+            self.timers = np.roll(self.timers, 1)
+            self.timers[0] = time.perf_counter()
+            s_per_update = np.mean(np.diff(self.timers)) * -1
+            self.plot.title.text = (f"Update Rate: {1/s_per_update:.01f} Hz"
+                                    f" ({s_per_update*1000:.00f} ms)")
 
 if __name__ == '__main__':
     bk_app = {'/': Application(FunctionHandler(UI))} # doc created here
