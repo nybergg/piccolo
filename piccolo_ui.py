@@ -117,11 +117,11 @@ class UI:
                            text="Update Rate: 0 Hz",
                            text_font_size="20pt",
                            text_color="black")
-        self.sliders = self._create_sliders()
-        self.bufferspinner = self._create_bufferspinner()
-        self.custom_div = self._create_custom_div()
-        self.plot2d = self._create_2d_scatter_plot()
-        self.plot = self._create_signal_plot()
+        self._create_sliders()
+        self._create_bufferspinner()
+        self._create_custom_div()
+        self._create_2d_scatter_plot()
+        self._create_signal_plot()
         # Generate Layout:
         self.doc.add_root(
             column(
@@ -140,48 +140,8 @@ class UI:
             )
         return None
 
-    """ UI Component Methods """
-
-    def _create_signal_plot(self):
-        plot_margin = (50, 0, 0, 10)
-        self.plot = figure(
-            height=300,
-            width=900,
-            title="Generated PMT Data",
-            x_axis_label="Time(ms)",
-            y_axis_label="Voltage",
-            toolbar_location=None,
-            x_range=(0, 50),
-            y_range=(0, 1.2),
-            margin=plot_margin,
-        )
-        self.plot.line(
-            "x",
-            "y",
-            source=self.source_PMT1,
-            color="mediumseagreen",
-            legend_label="PMT1",
-        )
-        self.plot.line(
-            "x", "y", source=self.source_PMT2, color="royalblue", legend_label="PMT2"
-        )
-        self._create_threshold_lines()
-
-        return self.plot
-
-    def _create_threshold_lines(self):
-        self.thresh_line = Span(
-            location=self.thresh,
-            dimension="width",
-            line_color="mediumseagreen",
-            line_width=2,
-            line_dash="dotted",
-        )
-        self.plot.add_layout(self.thresh_line)
-
     def _create_sliders(self):
         slider_margin = (10, 10, 20, 50)
-
         sliders_info = [
             {
                 "start": 0.01,
@@ -210,8 +170,7 @@ class UI:
                 "bar_color": "mediumseagreen",
                 "callback": self._thresh_changed,
             },
-        ]
-
+            ]
         self.sliders = []
         for slider_info in sliders_info:
             slider = Slider(
@@ -225,11 +184,9 @@ class UI:
             )
             slider.on_change("value", slider_info["callback"])
             self.sliders.append(slider)
-
-        return self.sliders
+        return None
 
     def _create_bufferspinner(self):
-        buffer_margin = (20, 0, 20, 50)
         self.bufferspinner = Spinner(
             title="Datapoint Count for Scatter Plot",
             low=0,
@@ -237,11 +194,87 @@ class UI:
             step=500,
             value=self.buffer_length,
             width=200,
-            margin=buffer_margin,
-        )
+            margin=(20, 0, 20, 50),
+            )
         self.bufferspinner.on_change("value", self._spinner_changed)
+        return None
 
-        return self.bufferspinner
+    def _create_custom_div(self):
+        # Creating the Bokeh Div object with the HTML content
+        self.custom_div = Div(
+            text=self._create_divhtml(),
+            width=400,
+            height=100,
+            margin=(0, 0, 20, 40)
+            )
+        return None
+
+    def _create_2d_scatter_plot(self):
+        color_mapper = LinearColorMapper(palette="Viridis256")
+        self.plot2d = figure(
+            height=400,
+            width=450,
+            x_axis_label="Channel 1 AUC",
+            y_axis_label="Channel 2 AUC",
+            x_range=(1e3, 1e6),
+            y_range=(1e3, 1e6),
+            x_axis_type="log",
+            y_axis_type="log",
+            title="Density Scatter Plot",
+            tools="box_select,reset",
+            )
+        glyph = self.plot2d.scatter(
+            "x",
+            "y",
+            source=self.source_2d,
+            size=2,
+            color={"field": "density", "transform": color_mapper},
+            line_color=None,
+            fill_alpha=0.6,
+            )
+        # supress alpha change for nonselected indices bc refresh messes it up
+        glyph.nonselection_glyph = None
+        self._boxselect_changed()
+        return None
+
+    def _create_signal_plot(self):
+        self.plot = figure(
+            height=300,
+            width=900,
+            title="Generated PMT Data",
+            x_axis_label="Time(ms)",
+            y_axis_label="Voltage",
+            toolbar_location=None,
+            x_range=(0, 50),
+            y_range=(0, 1.2),
+            margin=(50, 0, 0, 10),
+            )
+        self.plot.line(
+            "x",
+            "y",
+            source=self.source_PMT1,
+            color="mediumseagreen",
+            legend_label="PMT1",
+            )
+        self.plot.line(
+            "x",
+            "y",
+            source=self.source_PMT2,
+            color="royalblue",
+            legend_label="PMT2"
+            )
+        self._create_threshold_lines()
+        return None
+
+    def _create_threshold_lines(self):
+        self.thresh_line = Span(
+            location=self.thresh,
+            dimension="width",
+            line_color="mediumseagreen",
+            line_width=2,
+            line_dash="dotted",
+        )
+        self.plot.add_layout(self.thresh_line)
 
     def _create_divhtml(self):
         # Extracting float values from the dictionary
@@ -279,43 +312,9 @@ class UI:
 
         return self.html_content
 
-    def _create_custom_div(self):
-        div_margin = (0, 0, 20, 40)
 
-        # Creating the Bokeh Div object with the HTML content
-        self.custom_div = Div(
-            text=self._create_divhtml(), width=400, height=100, margin=div_margin
-        )
 
-        return self.custom_div
 
-    def _create_2d_scatter_plot(self):
-        color_mapper = LinearColorMapper(palette="Viridis256")
-        self.plot2d = figure(
-            height=400,
-            width=450,
-            x_axis_label="Channel 1 AUC",
-            y_axis_label="Channel 2 AUC",
-            x_range=(1e3, 1e6),
-            y_range=(1e3, 1e6),
-            x_axis_type="log",
-            y_axis_type="log",
-            title="Density Scatter Plot",
-            tools="box_select,reset",
-        )
-        self.glyph = self.plot2d.scatter(
-            "x",
-            "y",
-            source=self.source_2d,
-            size=2,
-            color={"field": "density", "transform": color_mapper},
-            line_color=None,
-            fill_alpha=0.6,
-        )
-        self.glyph.nonselection_glyph = None  # supress alpha change for nonselected indices bc refresh messes this up
-        self._boxselect_changed()
-
-        return self.plot2d
 
     """ Callback Methods """
 
