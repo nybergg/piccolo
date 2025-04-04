@@ -200,7 +200,7 @@ class UI:
         return None
 
     def _create_custom_div(self):
-        # Creating the Bokeh Div object with the HTML content
+        # Creating the Bokeh Div object with the HTML content:
         self.custom_div = Div(
             text=self._create_divhtml(),
             width=400,
@@ -232,9 +232,9 @@ class UI:
             line_color=None,
             fill_alpha=0.6,
             )
-        # supress alpha change for nonselected indices bc refresh messes it up
+        # supress alpha change for nonselected indices bc refresh messes it up:
         glyph.nonselection_glyph = None
-        # Custom javascript callback for box select tool
+        # Custom javascript callback for box select tool:
         callback = CustomJS(
             args=dict(source_bx=self.source_bx),
             code="""
@@ -262,14 +262,14 @@ class UI:
             source_bx.change.emit();
             """,
             )
-        # Attach Javascript and callback to plot for 'selectiongeometry' event
+        # Attach Javascript and callback to plot for 'selectiongeometry' event:
         self.plot2d.js_on_event(SelectionGeometry, callback)
         def _boxselect_pass(attr, old, new):
             with self.dg_lock:
                 print("Box Select Callback Triggered")
-                # Pass box values sim through the pipe to set gate values
+                # Pass box values sim through the pipe to set gate values:
                 self.dg.set_gate_values(dict(new))
-                # Store box values in ui box_select and update box select text
+                # Store box values in ui box_select and update box select text:
                 self.boxselect = new
                 self.custom_div.text = self._create_divhtml()        
         self.source_bx.on_change("data", _boxselect_pass)
@@ -301,10 +301,7 @@ class UI:
             color="royalblue",
             legend_label="PMT2"
             )
-        self._create_threshold_lines()
-        return None
-
-    def _create_threshold_lines(self):
+        # create threshold lines:
         self.thresh_line = Span(
             location=self.thresh,
             dimension="width",
@@ -313,33 +310,30 @@ class UI:
             line_dash="dotted",
         )
         self.plot.add_layout(self.thresh_line)
+        return None
 
     def _create_divhtml(self):
-        # Extracting float values from the dictionary
-        float_values = [self.boxselect[key][0] for key in ["x0", "y0", "x1", "y1"]]
-
-        # Convert float values to a string format of 10^x
+        # Extracting float values from the dictionary:
+        float_values = [self.boxselect[key][0] for key in [
+            "x0", "y0", "x1", "y1"]]
+        # Convert float values to a string format of 10^x:
         def to_scientific_with_superscript(value):
             if value == 0:
                 return "0"
             exponent = math.floor(math.log10(abs(value)))
             base = value / 10**exponent
             return f"{base:.1f} × 10<sup>{exponent}</sup>"
-
         formatted_values = [
-            to_scientific_with_superscript(value) for value in float_values
-        ]
-
-        # Labels for each box
+            to_scientific_with_superscript(value) for value in float_values]
+        # Labels for each box:
         labels = [
             "X<sub>min</sub>",
             "Y<sub>min</sub>",
             "X<sub>max</sub>",
             "Y<sub>max</sub>",
-        ]
-
-        # HTML template with embedded CSS for styling
-        self.html_content = f"""
+            ]
+        # HTML template with embedded CSS for styling:
+        html_content = f"""
         <div style="padding: 10px; background-color: white;">
             <div style="color: black; padding: 5px; background-color: white; text-align: left;"><b>Scatter Plot Gate Selection:</b></div>
             <div style="display: flex; justify-content: space-around; padding: 5px;">
@@ -347,16 +341,9 @@ class UI:
             </div>
         </div>
         """
-
-        return self.html_content
-
-
-
-
+        return html_content
 
     """ Callback Methods """
-
-
 
     def _gain1_changed(self, attr, old, new):
         with self.dg_lock:
