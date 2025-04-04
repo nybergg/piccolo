@@ -1,10 +1,10 @@
+# Imports from the python standard library:
+import math
 import numpy as np
 import threading
-import concurrency_tools as ct
 import time
-import math
-from data_generator import DataGenerator
 
+# Third party imports, installable via pip:
 from bokeh.layouts import column, row
 from bokeh.models import (
     ColumnDataSource,
@@ -15,15 +15,16 @@ from bokeh.models import (
     LinearColorMapper,
     Spinner,
     Div,
-)
+    )
 from bokeh.models.callbacks import CustomJS
 from bokeh.plotting import curdoc, figure
 from bokeh.events import SelectionGeometry
 
+# Our code, one .py file per module, copy files to your local directory:
+import concurrency_tools as ct  # github.com/AndrewGYork/tools
+from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
 
 class UI:
-    """Initialization Methods"""
-
     def __init__(self):
         print("UI init")
         self._init_hardware()
