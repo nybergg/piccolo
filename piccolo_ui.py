@@ -41,9 +41,9 @@ class UI:
             return None
         self.doc.on_session_destroyed(_session_destroyed)
         # create start/stop button:
-        self._create_toggle_button()
+        self._init_toggle_button()
 
-    def _create_toggle_button(self):
+    def _init_toggle_button(self):
         def _update_toggle(state):
             if not self._running:
                 self._init_() # init here with user click avoids race condition
@@ -67,7 +67,7 @@ class UI:
         def _update_ui():
             # Pull data from subprocess and update the datasource and plot:
             with self.dg_lock:
-                # Update pmt data
+                # Update pmt data:
                 self.source_PMT1.data = self.dg.data["pmt1"]
                 self.source_PMT2.data = self.dg.data["pmt2"]
                 for key in self.rolling_source_2d:
@@ -95,42 +95,34 @@ class UI:
             # update ui every 150ms:
             self.timers = np.zeros(100)
             self.doc.add_periodic_callback(_update_ui, 150)
-
-    """ Datasource Setup Methods """
+        return None
 
     def _setup_data_sources(self):
-        # Initialize data sources for the generated data
-        self.source_PMT1 = ColumnDataSource(
-            data=self.dg.data["pmt1"]
-        )  # convert from s to ms
+        # Initialize data sources for the generated data:
+        self.source_PMT1 = ColumnDataSource(data=self.dg.data["pmt1"]) # s to ms
         self.source_PMT2 = ColumnDataSource(data=self.dg.data["pmt2"])
         self.source_2d = ColumnDataSource(data=self.dg.data2d)
         self.rolling_source_2d = self.dg.data2d.copy()
-
-        # Initialize data sources for the interactive callbacks
+        # Initialize data sources for the interactive callbacks:
         self.thresh = 0.05
         self.buffer_length = 5000
         self.boxselect = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
         self.source_bx = ColumnDataSource(data=self.boxselect)
-
-    """ UI Setup Methods """
+        return None
 
     def _setup_ui_components(self):
-        # Setup update rate label, toggle, sliders, plot, and scatter plot
-        self.label = Label(
-            x=10,
-            y=400,
-            text="Update Rate: 0 Hz",
-            text_font_size="20pt",
-            text_color="black",
-        )
+        # Setup update rate label, toggle, sliders, plot, and scatter plot:
+        self.label = Label(x=10,
+                           y=400,
+                           text="Update Rate: 0 Hz",
+                           text_font_size="20pt",
+                           text_color="black")
         self.sliders = self._create_sliders()
         self.bufferspinner = self._create_bufferspinner()
         self.custom_div = self._create_custom_div()
-        self.plot = self._create_signal_plot()
         self.plot2d = self._create_2d_scatter_plot()
-
-        # Generate Layout
+        self.plot = self._create_signal_plot()
+        # Generate Layout:
         self.doc.add_root(
             column(
                 row(
@@ -140,16 +132,15 @@ class UI:
                         self.sliders[2],
                         self.bufferspinner,
                         self.custom_div,
-                    ),
+                        ),
                     self.plot2d,
-                ),
+                    ),
                 self.plot,
+                )
             )
-        )
+        return None
 
     """ UI Component Methods """
-
-
 
     def _create_signal_plot(self):
         plot_margin = (50, 0, 0, 10)
