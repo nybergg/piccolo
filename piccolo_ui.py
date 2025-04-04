@@ -46,7 +46,7 @@ class UI:
     def _create_toggle_button(self):
         def _update_toggle(state):
             if not self._running:
-                self._init_()
+                self._init_() # init here with user click avoids race condition
                 self._running = True
             with self.dg_lock:
                 if state:
@@ -64,21 +64,16 @@ class UI:
         return None
 
     def _init_(self):
-        self._init_hardware()
-        self._init_ui()        
-
-    def _init_hardware(self):
-        # Create an instance of the hardware class that will run in a separate process.
+        # Run CPU intensive DataGenerator in subprocess:
         self.dg = ct.ObjectInSubprocess(DataGenerator)
         self.dg_lock = threading.Lock()
-
-    def _init_ui(self):
-        # Initialize UI components
+        # Initialize UI components:
         with self.dg_lock:
             self.timers = np.zeros(100)
             self._setup_data_sources()
             self._setup_ui_components()
-            self.doc.add_periodic_callback(self.update_ui, 150)  # update ui every 150ms
+            # update ui every 150ms:
+            self.doc.add_periodic_callback(self.update_ui, 150)
 
     """ Datasource Setup Methods """
 
