@@ -31,18 +31,37 @@ from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
 
 class UI:
     def __init__(self, doc):
-        import sys # import here to keep sys reference on session destroyed
-        print("UI init")
         self.doc = doc
-        self._running = False
-        self.toggle = self._create_toggle()
-        self.doc.add_root(column([self.toggle,]))
+        print("UI init")
         # Detect if browser is closed:
+        import sys # import here to keep sys reference on session destroyed
         def _session_destroyed(session_context):
             print('session_destroyed:', session_context.destroyed)
             sys.exit()
-            return None        
+            return None
         self.doc.on_session_destroyed(_session_destroyed)
+        # create start/stop button:
+        self._create_toggle_button()
+
+    def _create_toggle_button(self):
+        def _update_toggle(state):
+            if not self._running:
+                self._init_()
+                self._running = True
+            with self.dg_lock:
+                if state:
+                    self.toggle.label = "Stop"
+                    self.toggle.button_type = "danger"
+                    self.dg.start_generating()
+                else:
+                    self.toggle.label = "Start"
+                    self.toggle.button_type = "success"
+                    self.dg.stop_generating()        
+        self._running = False
+        self.toggle = Toggle(label="Start", button_type="success")
+        self.toggle.on_click(_update_toggle)
+        self.doc.add_root(column([self.toggle,]))
+        return None
 
     def _init_(self):
         self._init_hardware()
@@ -114,11 +133,7 @@ class UI:
 
     """ UI Component Methods """
 
-    def _create_toggle(self):
-        self.toggle = Toggle(label="Start", button_type="success")
-        self.toggle.on_click(self._toggle_changed)
 
-        return self.toggle
 
     def _create_signal_plot(self):
         plot_margin = (50, 0, 0, 10)
@@ -297,19 +312,7 @@ class UI:
 
     """ Callback Methods """
 
-    def _toggle_changed(self, state):
-        if not self._running:
-            self._init_()
-            self._running = True
-        with self.dg_lock:
-            if state:
-                self.toggle.label = "Stop"
-                self.toggle.button_type = "danger"
-                self.dg.start_generating()
-            else:
-                self.toggle.label = "Start"
-                self.toggle.button_type = "success"
-                self.dg.stop_generating()
+
 
     def _gain1_changed(self, attr, old, new):
         with self.dg_lock:
