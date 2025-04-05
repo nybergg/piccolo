@@ -33,28 +33,16 @@ class DataGenerator:
         self.thresh = 0.03
         self.gate_val = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
 
-    """ Start, Stop, Continue Methods to Run in the Background """
-
-    def start_generating(self):
-        self._generate = True
-        self._thread = threading.Thread(target=self._continue_generating)
-        self._thread.start()
-
-    def stop_generating(self):
-        self._generate = False
-        if hasattr(self, "_thread"):
-            self._thread.join()
-
     def _continue_generating(self):
         while True:
             if not self._generate:
                 return
             self._generate_signal()
             self._analyze_drops()
-
-    """ Generate Test PMT Signals """
+        return None
 
     def _generate_signal(self):
+        # Generate Test PMT Signals:
         t = np.arange(0, self.signal_duration, self.sampling_interval)
 
         for channel_idx in range(1, self.num_channels + 1):
@@ -75,10 +63,10 @@ class DataGenerator:
             signal = baseline_noise + drops
             signal = signal * self.gain[channel_idx - 1]
             self.data[f"pmt{channel_idx}"] = {"x": t, "y": signal}
-
-    """ Analyze Drop Parameters from PMT Signals """
+        return None
 
     def _analyze_drops(self, detection_channel=1):
+        # Analyze Drop Parameters from PMT Signals:
         # Find drops based on the signal and threshold of the specified channel
         detection_signal = self.data[f"pmt{detection_channel}"]["y"]
         drops, _ = find_peaks(detection_signal, height=self.thresh)
@@ -184,19 +172,32 @@ class DataGenerator:
                     xy = np.vstack([np.log(auc_1), np.log(auc_2)])
                     density = gaussian_kde(xy)(xy)
                     self.data2d = {"x": auc_1, "y": auc_2, "density": density}
+        return None
 
-    """ Set hardware values based on UI callbacks """
+    def start_generating(self):
+        self._generate = True
+        self._thread = threading.Thread(target=self._continue_generating)
+        self._thread.start()
+        return None
+
+    def stop_generating(self):
+        self._generate = False
+        if hasattr(self, "_thread"):
+            self._thread.join()
+        return None
 
     def set_gain(self, value, channel=1):
         self.gain[channel - 1] = value
+        return None
 
     def set_thresh(self, value):
         self.thresh = value
+        return None
 
     def set_gate_values(self, values):
         self.gate_val = values
         print(f"Gate values set {self.gate_val}")
-
+        return None
 
 if __name__ == "__main__":
     dg = DataGenerator()
