@@ -1,11 +1,11 @@
+# Imports from the python standard library:
 import numpy as np
 import threading
-import concurrency_tools as ct
 
+# Third party imports, installable via pip:
+from scipy.integrate import simpson
 from scipy.signal import find_peaks, peak_widths
-from scipy.integrate import simps
 from scipy.stats import gaussian_kde
-
 
 class DataGenerator:
     NUM_CHANNELS = 2
@@ -162,7 +162,7 @@ class DataGenerator:
                         # Calculate drop parameters
                         max_signal = drop_signal.max()
                         drop_time = self.data[f"pmt{channel}"]["x"][int(left)]
-                        auc = simps(drop_signal, dx=sampling_interval)
+                        auc = simpson(drop_signal, dx=sampling_interval)
                         fwhm = width
                         drop_width = (right - left) * sampling_interval
 
