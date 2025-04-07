@@ -1,6 +1,7 @@
 # Imports from the python standard library:
 import math
 import numpy as np
+import sys
 import threading
 import time
 
@@ -30,18 +31,24 @@ import concurrency_tools as ct  # github.com/AndrewGYork/tools
 from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
 
 class UI:
-    def __init__(self, doc):
+    def __init__(self, doc, sys, name='Piccolo_ui', verbose=True):
         self.doc = doc
-        print("UI init")
+        self.name = name
+        self.verbose = verbose
+        if self.verbose:
+            print("%s: opening..."%self.name)
         # Detect if browser is closed:
-        import sys # import here to keep sys reference on session destroyed
         def _session_destroyed(session_context):
-            print('session_destroyed:', session_context.destroyed)
+            if self.verbose:
+                print("%s: session_destroyed = %s"%(
+                    self.name, session_context.destroyed))
             sys.exit()
             return None
         self.doc.on_session_destroyed(_session_destroyed)
         # create start/stop button:
         self._init_toggle_button()
+        if self.verbose:
+            print("%s: -> open and ready."%self.name)
 
     def _init_toggle_button(self):
         def _update_toggle(state):
@@ -360,8 +367,13 @@ class UI:
         """
         return html_content
 
+# -> Edit args and kwargs here for test block:
+def func(doc): # get instance of class WITH args and kwargs
+    bk_doc = UI(doc, sys, verbose=True)
+    return bk_doc
+
 if __name__ == '__main__':
-    bk_app = {'/': Application(FunctionHandler(UI))} # doc created here
+    bk_app = {'/': Application(FunctionHandler(func))} # doc created here
     server = Server(
         bk_app,
         port=5000, # default 5006
