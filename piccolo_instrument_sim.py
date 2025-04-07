@@ -21,6 +21,7 @@ class DataGenerator:
                  max_width=1,
                  name='Data_generator',
                  verbose=True,
+                 very_verbose=False,
                  ):
         # convert args to attributes:
         args = locals()
@@ -41,6 +42,8 @@ class DataGenerator:
             print("%s: -> open and ready."%self.name)
 
     def _continue_generating(self):
+        if self.very_verbose:
+            print("\n%s: continue generating"%self.name)
         while True:
             if not self._generate:
                 return
@@ -49,6 +52,8 @@ class DataGenerator:
         return None
 
     def _generate_signal(self):
+        if self.very_verbose:
+            print("\n%s: generate signal"%self.name)
         # Generate Test PMT Signals:
         t = np.arange(0, self.signal_duration, self.sampling_interval)
         for channel_idx in range(1, self.num_channels + 1):
@@ -66,9 +71,13 @@ class DataGenerator:
             signal = baseline_noise + drops
             signal = signal * self.gain[channel_idx - 1]
             self.data[f"pmt{channel_idx}"] = {"x": t, "y": signal}
+        if self.very_verbose:
+            print("\n%s: -> done generating signal"%self.name)            
         return None
 
     def _analyze_drops(self, detection_channel=1):
+        if self.very_verbose:
+            print("\n%s: analyzing drops"%self.name)
         # Analyze Drop Parameters from PMT Signals:
         # Find drops based on the signal and threshold of the specified channel:
         detection_signal = self.data[f"pmt{detection_channel}"]["y"]
@@ -159,11 +168,13 @@ class DataGenerator:
                     xy = np.vstack([np.log(auc_1), np.log(auc_2)])
                     density = gaussian_kde(xy)(xy)
                     self.data2d = {"x": auc_1, "y": auc_2, "density": density}
+        if self.very_verbose:
+            print("\n%s: -> done analysing drops"%self.name)
         return None
 
     def start_generating(self):
         if self.verbose:
-            print("%s: start generating"%self.name)
+            print("\n%s: start generating"%self.name)
         self._generate = True
         self._thread = threading.Thread(target=self._continue_generating)
         self._thread.start()
@@ -171,7 +182,7 @@ class DataGenerator:
 
     def stop_generating(self):
         if self.verbose:
-            print("%s: stop generating"%self.name)
+            print("\n%s: stop generating"%self.name)
         self._generate = False
         if hasattr(self, "_thread"):
             self._thread.join()
@@ -197,7 +208,9 @@ class DataGenerator:
         return None
 
 if __name__ == "__main__":
-    dg = DataGenerator(verbose=True)
+    import time
+    dg = DataGenerator(verbose=True, very_verbose=True)
     dg.start_generating()
-    input('hit enter to continue')
+    time.sleep(0.5) # run for a bit
+    input('\nhit enter to continue')
     dg.stop_generating()
