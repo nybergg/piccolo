@@ -18,7 +18,9 @@ class DataGenerator:
                  drop_cv=0.2,
                  baseline_cv=0.01,
                  min_width=0.1,
-                 max_width=1
+                 max_width=1,
+                 name='Data_generator',
+                 verbose=True,
                  ):
         # convert args to attributes:
         args = locals()
@@ -26,6 +28,8 @@ class DataGenerator:
         for k, v in args.items(): 
             if v is not None:
                 setattr(self, k, v) # A lot like self.x = x
+        if self.verbose:
+            print("%s: opening..."%self.name)
         self.data = {"pmt1": {"x": [0], "y": [0]},
                      "pmt2": {"x": [0], "y": [0]}}
         self.data2d = {"x": [0], "y": [0], "density": [0]}
@@ -33,6 +37,8 @@ class DataGenerator:
         self.gain = [0.5, 0.5]
         self.thresh = 0.03
         self.gate_val = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
+        if self.verbose:
+            print("%s: -> open and ready."%self.name)
 
     def _continue_generating(self):
         while True:
@@ -156,32 +162,42 @@ class DataGenerator:
         return None
 
     def start_generating(self):
+        if self.verbose:
+            print("%s: start generating"%self.name)
         self._generate = True
         self._thread = threading.Thread(target=self._continue_generating)
         self._thread.start()
         return None
 
     def stop_generating(self):
+        if self.verbose:
+            print("%s: stop generating"%self.name)
         self._generate = False
         if hasattr(self, "_thread"):
             self._thread.join()
         return None
 
     def set_gain(self, value, channel=1):
+        if self.verbose:
+            print("%s: setting gain = %s (channel=%i)"%(
+                self.name, value, channel))        
         self.gain[channel - 1] = value
         return None
 
     def set_thresh(self, value):
+        if self.verbose:
+            print("%s: setting thresh = %s"%(self.name, value))
         self.thresh = value
         return None
 
     def set_gate_values(self, values):
+        if self.verbose:
+            print("%s: setting gate values = %s"%(self.name, values))        
         self.gate_val = values
-        print(f"Gate values set {self.gate_val}")
         return None
 
 if __name__ == "__main__":
-    dg = DataGenerator()
+    dg = DataGenerator(verbose=True)
     dg.start_generating()
-    input()
+    input('hit enter to continue')
     dg.stop_generating()
