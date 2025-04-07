@@ -45,16 +45,36 @@ class UI:
             sys.exit()
             return None
         self.doc.on_session_destroyed(_session_destroyed)
-        # create start/stop button:
-        self._init_toggle_button()
+        # create launch buttons for hardware and sim:
+        self._running = False
+        def _launch_hw(state):
+            if not self._running:
+                self._init_hw()
+                self._running = True
+                self.launch_sim_button.button_type = "danger"
+        self.launch_hw_button = Toggle(
+            label="Launch hardware", button_type="success")
+        self.launch_hw_button.on_click(_launch_hw)
+        def _launch_sim(state):
+            if not self._running:
+                self._init_sim()
+                self._running = True
+                self.launch_hw_button.button_type = "danger"
+        self.launch_sim_button = Toggle(
+            label="Launch sim", button_type="success")
+        self.launch_sim_button.on_click(_launch_sim)
+        # add buttons to doc:
+        self.doc.add_root(row([self.launch_hw_button, self.launch_sim_button]))
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
-    def _init_toggle_button(self):
+    def _init_hw(self):
+        if self.verbose:
+            print("%s: initializing hardware"%self.name)
+        return None
+
+    def _init_sim(self):
         def _update_toggle(state):
-            if not self._running:
-                self._init_() # init here with user click avoids race condition
-                self._running = True
             with self.dg_lock:
                 if state:
                     self.toggle.label = "Stop"
@@ -64,13 +84,9 @@ class UI:
                     self.toggle.label = "Start"
                     self.toggle.button_type = "success"
                     self.dg.stop_generating()        
-        self._running = False
         self.toggle = Toggle(label="Start", button_type="success")
         self.toggle.on_click(_update_toggle)
         self.doc.add_root(column([self.toggle,]))
-        return None
-
-    def _init_(self):
         def _update_ui():
             # Pull data from subprocess and update the datasource and plot:
             with self.dg_lock:
