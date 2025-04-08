@@ -37,7 +37,6 @@ class DataGenerator:
         self.pmt_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_pmt_gain(ch, 0.5)
-        
         self.data = {"pmt1": {"x": [0], "y": [0]},
                      "pmt2": {"x": [0], "y": [0]}}
         self.data2d = {"x": [0], "y": [0], "density": [0]}
