@@ -29,15 +29,18 @@ class DataGenerator:
         for k, v in args.items(): 
             if v is not None:
                 setattr(self, k, v) # A lot like self.x = x
+        # init:
         if self.verbose:
             print("%s: opening..."%self.name)
+        self.set_threshold(0.03)
+        self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
+        self.pmt_gain = np.zeros(num_channels)
+        for ch in range(num_channels):
+            self.set_pmt_gain(ch, 0.5)
         self.data = {"pmt1": {"x": [0], "y": [0]},
                      "pmt2": {"x": [0], "y": [0]}}
         self.data2d = {"x": [0], "y": [0], "density": [0]}
-        self._generate = False
-        self.gain = [0.5, 0.5]
-        self.thresh = 0.03
-        self.gate_val = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
+        self._running = False
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
@@ -45,10 +48,11 @@ class DataGenerator:
         if self.very_verbose:
             print("\n%s: continue generating"%self.name)
         while True:
-            if not self._generate:
-                return
-            self._generate_signal()
-            self._analyze_drops()
+            if self._running:
+                self._generate_signal()
+                self._analyze_drops()
+            else:
+                break
         return None
 
     def _generate_signal(self):
@@ -69,7 +73,7 @@ class DataGenerator:
                 drops += drop
             # Combine signals for this channel:
             signal = baseline_noise + drops
-            signal = signal * self.gain[channel_idx - 1]
+            signal = signal * self.pmt_gain[channel_idx - 1]
             self.data[f"pmt{channel_idx}"] = {"x": t, "y": signal}
         if self.very_verbose:
             print("\n%s: -> done generating signal"%self.name)            
@@ -81,7 +85,7 @@ class DataGenerator:
         # Analyze Drop Parameters from PMT Signals:
         # Find drops based on the signal and threshold of the specified channel:
         detection_signal = self.data[f"pmt{detection_channel}"]["y"]
-        drops, _ = find_peaks(detection_signal, height=self.thresh)
+        drops, _ = find_peaks(detection_signal, height=self.threshold)
         if np.any(drops) == False:
             print('No peaks detected in reference channel')
         else:
@@ -172,10 +176,28 @@ class DataGenerator:
             print("\n%s: -> done analysing drops"%self.name)
         return None
 
+    def set_threshold(self, threshold):
+        if self.verbose:
+            print("%s: setting threshold = %s"%(self.name, threshold))
+        self.threshold = threshold
+        return None
+
+    def set_gate_limits(self, limits):
+        if self.verbose:
+            print("%s: setting gate limits = %s"%(self.name, limits))        
+        self.gate_limits = limits
+        return None
+
+    def set_pmt_gain(self, ch, gain):
+        if self.verbose:
+            print("%s(ch%s): setting pmt gain = %s"%(self.name, ch, gain))
+        self.pmt_gain[ch] = gain
+        return None
+
     def start_generating(self):
         if self.verbose:
             print("\n%s: start generating"%self.name)
-        self._generate = True
+        self._running = True
         self._thread = threading.Thread(target=self._continue_generating)
         self._thread.start()
         return None
@@ -183,28 +205,9 @@ class DataGenerator:
     def stop_generating(self):
         if self.verbose:
             print("\n%s: stop generating"%self.name)
-        self._generate = False
-        if hasattr(self, "_thread"):
+        if self._running:
+            self._running = False
             self._thread.join()
-        return None
-
-    def set_gain(self, value, channel=1):
-        if self.verbose:
-            print("%s: setting gain = %s (channel=%i)"%(
-                self.name, value, channel))        
-        self.gain[channel - 1] = value
-        return None
-
-    def set_thresh(self, value):
-        if self.verbose:
-            print("%s: setting thresh = %s"%(self.name, value))
-        self.thresh = value
-        return None
-
-    def set_gate_values(self, values):
-        if self.verbose:
-            print("%s: setting gate values = %s"%(self.name, values))        
-        self.gate_val = values
         return None
 
 if __name__ == "__main__":

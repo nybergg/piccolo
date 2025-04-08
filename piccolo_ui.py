@@ -164,17 +164,17 @@ class UI:
         return None
 
     def _create_sliders(self):
+        def _gain0_changed(attr, old, new):
+            with self.dg_lock:
+                self.dg.set_pmt_gain(0, new)
+            return None
         def _gain1_changed(attr, old, new):
             with self.dg_lock:
-                self.dg.set_gain(new, 1)
+                self.dg.set_pmt_gain(1, new)
             return None
-        def _gain2_changed(attr, old, new):
+        def _threshold_changed(attr, old, new):
             with self.dg_lock:
-                self.dg.set_gain(new, 2)
-            return None
-        def _thresh_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_thresh(new)
+                self.dg.set_threshold(new)
                 self.thresh_line.location = self.sliders[2].value
             return None
         slider_margin = (10, 10, 20, 50)
@@ -184,18 +184,18 @@ class UI:
                 "end": 1,
                 "value": 0.5,
                 "step": 0.01,
-                "title": "PMT 1 Gain",
+                "title": "PMT 0 Gain",
                 "bar_color": "mediumseagreen",
-                "callback": _gain1_changed,
+                "callback": _gain0_changed,
             },
             {
                 "start": 0.01,
                 "end": 1,
                 "value": 0.5,
                 "step": 0.01,
-                "title": "PMT 2 Gain",
+                "title": "PMT 1 Gain",
                 "bar_color": "royalblue",
-                "callback": _gain2_changed,
+                "callback": _gain1_changed,
             },
             {
                 "start": 0,
@@ -204,7 +204,7 @@ class UI:
                 "step": 0.01,
                 "title": "PMT 1 Threshold",
                 "bar_color": "mediumseagreen",
-                "callback": _thresh_changed,
+                "callback": _threshold_changed,
             },
             ]
         self.sliders = []
@@ -308,7 +308,7 @@ class UI:
             with self.dg_lock:
                 print("Box Select Callback Triggered")
                 # Pass box values sim through the pipe to set gate values:
-                self.dg.set_gate_values(dict(new))
+                self.dg.set_gate_limits(dict(new))
                 # Store box values in ui box_select and update box select text:
                 self.boxselect = new
                 self.custom_div.text = self._create_divhtml()        
