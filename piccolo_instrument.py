@@ -64,7 +64,8 @@ if __name__ == "__main__":
 
     try:
         rp_out, _ = instrument.deploy_and_run()
-        print("--- OUTPUT ---")
+        print("////////// Red Pitaya Output //////////")
+        print("///////////////////////////////////////")
         print(rp_out)
     except Exception as local_err:
         print(f"Error: {local_err}")
