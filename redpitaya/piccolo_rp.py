@@ -7,14 +7,18 @@ import struct
 import os
 import mmap
 import logging
+import argparse
+
 
 class PiccoloRP:
-    def __init__(self):
+    def __init__(self, verbose=False, very_verbose=False):
+        self.verbose = verbose
+        self.very_verbose = very_verbose
         self._map_memory()
-
+    
+    ##### Memory reading and writing methods #####
     def _map_memory(self):
         """Map the memory addresses from the FADS memory region to the FADS variables."""
-
         base_addr = 0x40600000
         map_size = 0x2000  # 8 KB mapping
         
@@ -23,37 +27,90 @@ class PiccoloRP:
         self.mmap = mmap.mmap(mem_fd.fileno(), map_size, mmap.MAP_SHARED,
                                 mmap.PROT_READ | mmap.PROT_WRITE, offset=base_addr)
         
-        # Read the piccolo mmap json: contains the piccolo variables and their 
-        # dtypes, addresses, units, and defaults
+        # Get FADS variable information and adjust formatting
+        self._get_mmap_info()
+        self._expand_mmap_info()
+        self._interpret_datatypes()
+        
+        # Debugging
+        if self.verbose:
+            print("Memory map completed.")
+        if self.very_verbose:
+            print("Mapped Parameters:")
+            for var in self.mmap_info:
+                print(var)
+
+        return None
+    
+    def _get_mmap_info(self):
+        """Get information about the piccolo variables and their memory addresses."""
         script_dir = os.path.dirname(os.path.realpath(__file__))
         json_path = os.path.join(script_dir, "piccolo_mmap.json")
-        
         with open(json_path, "r") as f:
             mmap_json = json.load(f)
-        print("Top-level keys in mmap_json:", mmap_json.keys())
 
         # Assign the piccolo parameter information to the class attributes
         self.fads_parameters_info = mmap_json["fads_parameters"]
         self.droplet_parameters_info = mmap_json["droplet_parameters"]
         self.sort_gates_info = mmap_json["sort_gates"]
 
-        print(self.sort_gates_info)
-
+        # Join the parameter information into a single list
         self.mmap_info = (
             self.fads_parameters_info
             + self.droplet_parameters_info
             + self.sort_gates_info
         )
-        print(self.mmap_info)
 
-        print("Memory map completed.")
-        
+        # Debugging
+        if self.verbose:
+            print("Memory map information loaded.")
+        if self.very_verbose:
+            print("Mapped Parameters:")
+            for param in self.fads_parameters_info:
+                print(param)
+            print("Droplet Parameters:")
+            for param in self.droplet_parameters_info:
+                print(param)
+            print("Sort Gates:")
+            for gate in self.sort_gates_info:
+                print(gate)
+
         return None
+    
+    def _expand_mmap_info(self):
+        """Expand the mmap_info list to handle variables with multiple addresses."""
+        expanded_info = []
+
+        for var in self.mmap_info:
+            addr = var["addr"]
+
+            # If it's a list of addresses, split into separate entries
+            if isinstance(addr, list):
+                defaults = var.get("default", [None] * len(addr))
+                for i, (a, d) in enumerate(zip(addr, defaults)):
+                    new_var = var.copy()
+                    new_var["name"] = f"{var['name']}[{i}]"
+                    new_var["addr"] = a
+                    if isinstance(defaults, list):
+                        new_var["default"] = d
+                    expanded_info.append(new_var)
+            else:
+                expanded_info.append(var)
+
+        self.mmap_info = expanded_info
         
-    def _interpret_dtype(self):
-        """Interpret the data type from the JSON configuration."""
-        # TODO: trying to implement this once the JSON file is available not when each variable is read
-        # need to test this
+        # Debugging
+        if self.verbose:
+            print("Memory map info expanded.")
+        if self.very_verbose:
+            print("Expanded mmap_info:")
+            for var in self.mmap_info:
+                print(var)
+
+        return None
+
+    def _interpret_datatypes(self):
+        """Interpret the Verilog datatypes in the JSON file and convert them to Python datatypes."""
         dtype_intepretter = {
             "32'd":  { "fmt": "<I", "bits": 32, "signed": False, "bool": False },
             "32'sd": { "fmt": "<i", "bits": 32, "signed": True,  "bool": False },
@@ -63,18 +120,26 @@ class PiccoloRP:
             "2'b":   { "fmt": "<B", "bits": 2,  "signed": False, "bool": True  },
             "1'b":   { "fmt": "<B", "bits": 1,  "signed": False, "bool": True  }
             }
+
+        # Update variables with their corresponding Python data types
         for var in self.mmap_info:
-            var_conf = self.mmap_info[var]
-            dtype = var_conf["dtype"]
+            dtype = var.get("dtype")
             if dtype in dtype_intepretter:
-                self.mmap_info[var]["fmt"] = dtype_intepretter[dtype]["fmt"]
-                self.mmap_info[var]["bits"] = dtype_intepretter[dtype]["bits"]
-                self.mmap_info[var]["signed"] = dtype_intepretter[dtype]["signed"]
-                self.mmap_info[var]["bool"] = dtype_intepretter[dtype]["bool"]
+                var.update(dtype_intepretter[dtype])
             else:
                 raise ValueError(f"Unsupported data type: {dtype}")
             
-        print("Data types interpreted.")
+        # Debugging
+        if self.verbose:
+            print("Data types interpreted.")
+        if self.very_verbose:
+            print("Interpreted datatypes for mmap_info:")
+            for var in self.mmap_info:
+                print(var)
+            
+        return None
+    
+
 
     def _read_memory_value(self, address, dtype, size, mask_int=None):
         """Helper function to read a single memory value from the specified address."""
@@ -93,47 +158,6 @@ class PiccoloRP:
                     value = value - (1 << 14)
         return value
     
-    def _convert_width(self, raw):
-        """
-        Convert clock cycles to milliseconds.
-        The conversion factor is determined by the clock frequency: (clock_MHz * 1000) cycles per millisecond.
-        """
-        factor = self.clock_calibration * 1000  # cycles per millisecond
-        if isinstance(raw, list):
-            return [x / factor for x in raw]
-        return raw / factor
-    
-    def _convert_intensity(self, raw, channel):
-        """
-        Convert raw intensity to volts using calibration parameters for the specified channel.
-        """
-        if channel not in self.voltage_calibration:
-            raise ValueError(f"Calibration parameters for channel {channel} not found.")
-        params = self.voltage_calibration[channel]
-        return (raw - params["offset"]) * params["gain"] / params["buffer_size"]
-    
-    def _convert_area(self, raw, channel):
-        """
-        Convert raw area (clock cycles x raw intensity) to V·ms.
-        First converts the raw value to volts, then converts clock cycles to milliseconds using the clock_MHz value.
-        """
-        if channel not in self.voltage_calibration:
-            raise ValueError(f"Calibration parameters for channel {channel} not found.")
-        params = self.voltage_calibration[channel]
-        factor = self.clock_calibration * 1000  # cycles per millisecond
-        return ((raw - params["offset"]) * params["gain"] / params["buffer_size"]) / factor
-    
-    def _get_calibration(self, config_path):
-        """
-        Reads calibration configuration from a JSON file and initializes calibration parameters.
-        """
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        # Calibration parameters for voltage conversion.
-        self.voltage_calibration = config.get("voltage_calibration", {})
-        # Clock frequency in MHz for time conversions.
-        self.clock_calibration = config.get("clock_MHz", 125)
-
     def read_memory(self, addr, dtype, size, mask_int=None):
         """
         Reads from memory using the precomputed size and mask.
@@ -147,22 +171,8 @@ class PiccoloRP:
         else:
             return self._read_memory_value(addr, dtype, size, mask_int)
         
-     # Logging methods   
-    def _initialize_csv(self):
-        """Open the CSV file and write the header. For multi-channel variables, expand headers."""
-        self.csv_file = open(self.csv_filename, "w", newline="")
-        self.csv_writer = csv.writer(self.csv_file)
-        header = ["timestamp_ms"]
-        for var in self.log_var:
-            var_conf = self.fads_var[var]
-            if isinstance(var_conf["addr"], list):
-                header.extend([f"{var}_ch{i+1}" for i in range(len(var_conf["addr"]))])
-            else:
-                header.append(var)
-        self.csv_writer.writerow(header)
-        self.csv_file.flush()
-        print(f"Log file {self.csv_filename} initialized.")
 
+    ##### Logging methods #####
     def update_logging(self):
         timestamp_ms = time.time() * 1e3  # Convert to microseconds.
 
@@ -258,6 +268,69 @@ class PiccoloRP:
             self.csv_file.close()
         self.logger.info("Logging stopped.")
 
+    def _convert_width(self, raw):
+        """
+        Convert clock cycles to milliseconds.
+        The conversion factor is determined by the clock frequency: (clock_MHz * 1000) cycles per millisecond.
+        """
+        factor = self.clock_calibration * 1000  # cycles per millisecond
+        if isinstance(raw, list):
+            return [x / factor for x in raw]
+        return raw / factor
+    
+    def _convert_intensity(self, raw, channel):
+        """
+        Convert raw intensity to volts using calibration parameters for the specified channel.
+        """
+        if channel not in self.voltage_calibration:
+            raise ValueError(f"Calibration parameters for channel {channel} not found.")
+        params = self.voltage_calibration[channel]
+        return (raw - params["offset"]) * params["gain"] / params["buffer_size"]
+    
+    def _convert_area(self, raw, channel):
+        """
+        Convert raw area (clock cycles x raw intensity) to V·ms.
+        First converts the raw value to volts, then converts clock cycles to milliseconds using the clock_MHz value.
+        """
+        if channel not in self.voltage_calibration:
+            raise ValueError(f"Calibration parameters for channel {channel} not found.")
+        params = self.voltage_calibration[channel]
+        factor = self.clock_calibration * 1000  # cycles per millisecond
+        return ((raw - params["offset"]) * params["gain"] / params["buffer_size"]) / factor
+    
+    def _get_calibration(self, config_path):
+        """
+        Reads calibration configuration from a JSON file and initializes calibration parameters.
+        """
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        # Calibration parameters for voltage conversion.
+        self.voltage_calibration = config.get("voltage_calibration", {})
+        # Clock frequency in MHz for time conversions.
+        self.clock_calibration = config.get("clock_MHz", 125)
+        
+    def _initialize_csv(self):
+        """Open the CSV file and write the header. For multi-channel variables, expand headers."""
+        self.csv_file = open(self.csv_filename, "w", newline="")
+        self.csv_writer = csv.writer(self.csv_file)
+        header = ["timestamp_ms"]
+        for var in self.log_var:
+            var_conf = self.fads_var[var]
+            if isinstance(var_conf["addr"], list):
+                header.extend([f"{var}_ch{i+1}" for i in range(len(var_conf["addr"]))])
+            else:
+                header.append(var)
+        self.csv_writer.writerow(header)
+        self.csv_file.flush()
+        print(f"Log file {self.csv_filename} initialized.")
+
+    
+
 if __name__ == "__main__":
-    rp = PiccoloRP()
-    rp._map_memory()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
+    parser.add_argument("--very_verbose", action="store_true", help="Enable very verbose mode")
+    args = parser.parse_args()
+    
+    rp = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
+

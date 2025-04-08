@@ -1,33 +1,28 @@
-import paramiko
-from scp import SCPClient
 import os
 import json
+import paramiko
+from scp import SCPClient
+
+###
+# TODO:
+# - Add a connection test / Hello World as default
+# - Remove ip, username, password from the class and only use the login file
+# - Add a test for the login file and suggest json file creation and exmaple
 
 class Instrument:
     def __init__(self, 
                  local_script, 
-                 args=None, 
+                 script_args=None, 
                  rp_dir="piccolo_testing", 
-                 ip="00.00.00.0", 
-                 username="root", 
-                 password="root",
-                 login_file_flag=False
                  ):
         
         # Local and remote script information
         self.local_script = local_script
-        self.args = args or []
+        self.script_args = script_args or []
         self.rp_dir = rp_dir
-        
-        # Red Pitaya login information
-        self.ip = ip
-        self.username = username
-        self.password = password
-        self.login_file_flag = login_file_flag
 
     def deploy_and_run(self):
-        if self.login_file_flag:
-            self._get_rp_login()       
+        self._get_rp_login()       
         self._connect()
         remote_script = self._transfer()
         output, errors = self._run(remote_script)
@@ -35,7 +30,7 @@ class Instrument:
         return output, errors
 
     def _get_rp_login(self):
-        with open("rp_login.json", "r") as f:
+        with open("redpitaya/rp_login.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
@@ -57,7 +52,7 @@ class Instrument:
         return remote_path
 
     def _run(self, remote_path):
-        args = " ".join(self.args)
+        args = " ".join(self.script_args)
         script = os.path.basename(remote_path)
         cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {script} {args}"'
         _, stdout, stderr = self.ssh.exec_command(cmd, get_pty=True)
@@ -65,13 +60,11 @@ class Instrument:
 
     
 if __name__ == "__main__":
-    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", rp_dir="piccolo_testing", login_file_flag=True)
+    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing")
 
     try:
-        out, err = instrument.deploy_and_run()
+        rp_out, _ = instrument.deploy_and_run()
         print("--- OUTPUT ---")
-        print(out)
-        print("--- ERRORS ---")
-        print(err)
-    except Exception as e:
-        print(f"Error: {e}")
+        print(rp_out)
+    except Exception as local_err:
+        print(f"Error: {local_err}")
