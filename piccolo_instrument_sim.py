@@ -37,10 +37,11 @@ class DataGenerator:
         self.pmt_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_pmt_gain(ch, 0.5)
+        
         self.data = {"pmt1": {"x": [0], "y": [0]},
                      "pmt2": {"x": [0], "y": [0]}}
         self.data2d = {"x": [0], "y": [0], "density": [0]}
-        self._generate = False
+        self._running = False
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
@@ -48,10 +49,11 @@ class DataGenerator:
         if self.very_verbose:
             print("\n%s: continue generating"%self.name)
         while True:
-            if not self._generate:
-                return
-            self._generate_signal()
-            self._analyze_drops()
+            if self._running:
+                self._generate_signal()
+                self._analyze_drops()
+            else:
+                break
         return None
 
     def _generate_signal(self):
@@ -196,7 +198,7 @@ class DataGenerator:
     def start_generating(self):
         if self.verbose:
             print("\n%s: start generating"%self.name)
-        self._generate = True
+        self._running = True
         self._thread = threading.Thread(target=self._continue_generating)
         self._thread.start()
         return None
@@ -204,8 +206,8 @@ class DataGenerator:
     def stop_generating(self):
         if self.verbose:
             print("\n%s: stop generating"%self.name)
-        self._generate = False
-        if hasattr(self, "_thread"):
+        if self._running:
+            self._running = False
             self._thread.join()
         return None
 
