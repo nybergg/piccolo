@@ -27,7 +27,7 @@ class Instrument:
 
     def deploy_and_run(self):
         if self.login_file_flag:
-            self._get_rp_login()
+            self._get_rp_login()       
         self._connect()
         remote_script = self._transfer()
         output, errors = self._run(remote_script)
@@ -35,15 +35,12 @@ class Instrument:
         return output, errors
 
     def _get_rp_login(self):
-        
         with open("rp_login.json", "r") as f:
             rp_login_json = json.load(f)
 
-        # Assign the piccolo parameter information to the class attributes
         self.ip = rp_login_json["ip"]
         self.username = rp_login_json["username"]
         self.password = rp_login_json["password"]
-        
         return None
         
     def _connect(self):
@@ -63,7 +60,7 @@ class Instrument:
         args = " ".join(self.args)
         script = os.path.basename(remote_path)
         cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {script} {args}"'
-        stdin, stdout, stderr = self.ssh.exec_command(cmd, get_pty=True)
+        _, stdout, stderr = self.ssh.exec_command(cmd, get_pty=True)
         return stdout.read().decode(), stderr.read().decode()
 
     
