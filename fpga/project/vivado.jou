@@ -11,3 +11,4 @@
 #-----------------------------------------------------------
 start_gui
 open_project C:/Github/piccolo/fpga/project/redpitaya.xpr
+update_compile_order -fileset sources_1
