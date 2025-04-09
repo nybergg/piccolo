@@ -31,7 +31,12 @@ import concurrency_tools as ct  # github.com/AndrewGYork/tools
 from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
 
 class UI:
-    def __init__(self, doc, sys, name='Piccolo_ui', verbose=True):
+    def __init__(self,
+                 doc,
+                 sys,
+                 name='Piccolo_ui',
+                 simulate=False,
+                 verbose=True):
         self.doc = doc
         self.name = name
         self.verbose = verbose
@@ -46,25 +51,10 @@ class UI:
             return None
         self.doc.on_session_destroyed(_session_destroyed)
         # create launch buttons for hardware and sim:
-        self._running = False
-        def _launch_hw(state):
-            if not self._running:
-                self._init_hw()
-                self._running = True
-                self.launch_sim_button.button_type = "danger"
-        self.launch_hw_button = Toggle(
-            label="Launch hardware", button_type="success")
-        self.launch_hw_button.on_click(_launch_hw)
-        def _launch_sim(state):
-            if not self._running:
-                self._init_sim()
-                self._running = True
-                self.launch_hw_button.button_type = "danger"
-        self.launch_sim_button = Toggle(
-            label="Launch sim", button_type="success")
-        self.launch_sim_button.on_click(_launch_sim)
-        # add buttons to doc:
-        self.doc.add_root(row([self.launch_hw_button, self.launch_sim_button]))
+        if simulate:
+            self._init_sim()
+        else:
+            self._init_hw()
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
@@ -74,25 +64,12 @@ class UI:
         return None
 
     def _init_sim(self):
-        def _update_toggle(state):
-            with self.dg_lock:
-                if state:
-                    self.toggle.label = "Stop"
-                    self.toggle.button_type = "danger"
-                    self.dg.start_generating()
-                else:
-                    self.toggle.label = "Start"
-                    self.toggle.button_type = "success"
-                    self.dg.stop_generating()        
-        self.toggle = Toggle(label="Start", button_type="success")
-        self.toggle.on_click(_update_toggle)
-        self.doc.add_root(column([self.toggle,]))
         def _update_ui():
             # Pull data from subprocess and update the datasource and plot:
             with self.dg_lock:
                 # Update pmt data:
+                self.source_PMT0.data = self.dg.data["pmt0"]
                 self.source_PMT1.data = self.dg.data["pmt1"]
-                self.source_PMT2.data = self.dg.data["pmt2"]
                 for key in self.rolling_source_2d:
                     self.rolling_source_2d[key].extend(self.dg.data2d[key])
                     if self.buffer_length == 0:
@@ -122,8 +99,8 @@ class UI:
 
     def _setup_data_sources(self):
         # Initialize data sources for the generated data:
-        self.source_PMT1 = ColumnDataSource(data=self.dg.data["pmt1"]) # s to ms
-        self.source_PMT2 = ColumnDataSource(data=self.dg.data["pmt2"])
+        self.source_PMT0 = ColumnDataSource(data=self.dg.data["pmt0"]) # s to ms
+        self.source_PMT1 = ColumnDataSource(data=self.dg.data["pmt1"])
         self.source_2d = ColumnDataSource(data=self.dg.data2d)
         self.rolling_source_2d = self.dg.data2d.copy()
         # Initialize data sources for the interactive callbacks:
@@ -140,6 +117,7 @@ class UI:
                            text="Update Rate: 0 Hz",
                            text_font_size="20pt",
                            text_color="black")
+        self._create_button()
         self._create_sliders()
         self._create_bufferspinner()
         self._create_custom_div()
@@ -148,6 +126,7 @@ class UI:
         # Generate Layout:
         self.doc.add_root(
             column(
+                self.button,
                 row(
                     column(
                         self.sliders[0],
@@ -161,6 +140,21 @@ class UI:
                 self.plot,
                 )
             )
+        return None
+
+    def _create_button(self):
+        def _update_toggle(state):
+            with self.dg_lock:
+                if state:
+                    self.button.label = "Stop"
+                    self.button.button_type = "danger"
+                    self.dg.start_generating()
+                else:
+                    self.button.label = "Start"
+                    self.button.button_type = "success"
+                    self.dg.stop_generating()        
+        self.button = Toggle(label="Start", button_type="success")
+        self.button.on_click(_update_toggle)
         return None
 
     def _create_sliders(self):
@@ -202,7 +196,7 @@ class UI:
                 "end": 2,
                 "value": self.thresh,
                 "step": 0.01,
-                "title": "PMT 1 Threshold",
+                "title": "PMT 0 Threshold",
                 "bar_color": "mediumseagreen",
                 "callback": _threshold_changed,
             },
@@ -330,16 +324,16 @@ class UI:
         self.plot.line(
             "x",
             "y",
-            source=self.source_PMT1,
+            source=self.source_PMT0,
             color="mediumseagreen",
-            legend_label="PMT1",
+            legend_label="PMT0",
             )
         self.plot.line(
             "x",
             "y",
-            source=self.source_PMT2,
+            source=self.source_PMT1,
             color="royalblue",
-            legend_label="PMT2"
+            legend_label="PMT1"
             )
         # create threshold lines:
         self.thresh_line = Span(
@@ -385,7 +379,7 @@ class UI:
 
 # -> Edit args and kwargs here for test block:
 def func(doc): # get instance of class WITH args and kwargs
-    bk_doc = UI(doc, sys, verbose=True)
+    bk_doc = UI(doc, sys, simulate=True, verbose=True)
     return bk_doc
 
 if __name__ == '__main__':
