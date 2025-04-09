@@ -37,8 +37,8 @@ class DataGenerator:
         self.pmt_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_pmt_gain(ch, 0.5)
-        self.data = {"pmt1": {"x": [0], "y": [0]},
-                     "pmt2": {"x": [0], "y": [0]}}
+        self.data = {"pmt0": {"x": [0], "y": [0]},
+                     "pmt1": {"x": [0], "y": [0]}}
         self.data2d = {"x": [0], "y": [0], "density": [0]}
         self._running = False
         if self.verbose:
@@ -60,7 +60,7 @@ class DataGenerator:
             print("\n%s: generate signal"%self.name)
         # Generate Test PMT Signals:
         t = np.arange(0, self.signal_duration, self.sampling_interval)
-        for channel_idx in range(1, self.num_channels + 1):
+        for ch in range(self.num_channels):
             # Generate baseline noise:
             baseline_noise = np.random.normal(
                 loc=self.baseline, scale=self.baseline_cv, size=len(t))
@@ -73,18 +73,18 @@ class DataGenerator:
                 drops += drop
             # Combine signals for this channel:
             signal = baseline_noise + drops
-            signal = signal * self.pmt_gain[channel_idx - 1]
-            self.data[f"pmt{channel_idx}"] = {"x": t, "y": signal}
+            signal = signal * self.pmt_gain[ch]
+            self.data[f"pmt{ch}"] = {"x": t, "y": signal}
         if self.very_verbose:
             print("\n%s: -> done generating signal"%self.name)            
         return None
 
-    def _analyze_drops(self, detection_channel=1):
+    def _analyze_drops(self, ch=1):
         if self.very_verbose:
             print("\n%s: analyzing drops"%self.name)
         # Analyze Drop Parameters from PMT Signals:
         # Find drops based on the signal and threshold of the specified channel:
-        detection_signal = self.data[f"pmt{detection_channel}"]["y"]
+        detection_signal = self.data[f"pmt{ch}"]["y"]
         drops, _ = find_peaks(detection_signal, height=self.threshold)
         if np.any(drops) == False:
             print('No peaks detected in reference channel')
@@ -126,26 +126,26 @@ class DataGenerator:
                 for i, (left, right, width) in enumerate(
                     zip(valid_left_ips, valid_right_ips, valid_drop_widths),
                     start=1):
-                    for channel in range(1, self.num_channels + 1):
+                    for ch in range(self.num_channels):
                         # Specify the signal from a given channel:
-                        channel_signal = self.data[f"pmt{channel}"]["y"]
+                        channel_signal = self.data[f"pmt{ch}"]["y"]
                         # Isolate baseline signal by excluding drop indices:
                         # (technically don't need to do this for every drop)
                         baseline_indices = np.setdiff1d(
                             np.arange(len(channel_signal)), excluded_indices)
-                        baseline_signals[channel] = np.median(
+                        baseline_signals[ch] = np.median(
                             channel_signal[baseline_indices])
-                        baseline = np.mean(baseline_signals[channel])
+                        baseline = np.mean(baseline_signals[ch])
                         # Isolate drop signal:
                         drop_signal = channel_signal[int(left) : int(right)]
                         # Calculate drop parameters:
                         max_signal = drop_signal.max()
-                        drop_time = self.data[f"pmt{channel}"]["x"][int(left)]
+                        drop_time = self.data[f"pmt{ch}"]["x"][int(left)]
                         auc = simpson(drop_signal, dx=self.sampling_interval)
                         fwhm = width
                         drop_width = (right - left) * self.sampling_interval
                         # Append drop parameter dictionary:
-                        results["channel"].append(channel)
+                        results["channel"].append(ch)
                         results["id"].append(i)
                         results["timestamp"].append(drop_time)
                         results["width"].append(drop_width)
@@ -157,12 +157,12 @@ class DataGenerator:
                 auc_1 = [
                     results["auc"][i]
                     for i, channel_value in enumerate(results["channel"])
-                    if channel_value == 1
+                    if channel_value == 0
                     ]
                 auc_2 = [
                     results["auc"][i]
                     for i, channel_value in enumerate(results["channel"])
-                    if channel_value == 2
+                    if channel_value == 1
                     ]
                 # Locate auc values that are zero and give them a negligible
                 # non-zero value
