@@ -16,6 +16,7 @@ class PiccoloRP:
         self.very_verbose = very_verbose
         self._map_memory()
         self._get_mmap_info()
+        self._write_defaults()
     
     ##### Memory mapping methods #####
     def _map_memory(self):
@@ -128,7 +129,7 @@ class PiccoloRP:
         return None
 
     def _interpret_mmap_dtypes(self):
-        """Interpret the Verilog datatypes in the JSON file and convert them to Python datatypes."""
+        """Interpret the Verilog datatypes as Python datatypes."""
         dtype_intepretter = {
             "32'd":  { "fmt": "<I", "bits": 32, "signed": False, "bool": False },
             "32'sd": { "fmt": "<i", "bits": 32, "signed": True,  "bool": False },
@@ -187,9 +188,9 @@ class PiccoloRP:
         var_conf = self.mmap_lookup.get(var_name)
 
         if var_conf is None:
-            raise ValueError(f"Variable {var_name} not found in Piccolo variables.")
+            raise ValueError(f"Variable {var_name} not found in piccolo variables.")
 
-        offset = int(var_conf["addr"], 16) if isinstance(var_conf["addr"], str) else var_conf["addr"]
+        offset = int(var_conf["addr"], 16)
         fmt = var_conf["fmt"]
         bits = var_conf["bits"]
         is_signed = var_conf["signed"]
@@ -218,9 +219,82 @@ class PiccoloRP:
 
         if is_bool:
             val = bin(val)[2:] #convert to binary string  
+
+        # Debug
+        if self.very_verbose:
+            print(f"Read {var_name} from memory: {val}")
         
         return val
+    
+    def write_memory_var(self, var_name, value):
+        """Write a memory value to the specified address."""
+        
+        # Debug
+        if self.verbose:
+            print("--------Writing variable to memory--------")
 
+        var_conf = self.mmap_lookup.get(var_name)
+
+        if var_conf is None:
+            raise ValueError(f"Variable {var_name} not found in piccolo variables.")
+
+        offset = int(var_conf["addr"], 16) 
+        fmt = var_conf["fmt"]
+        bits = var_conf["bits"]
+        is_bool = var_conf["bool"]
+
+        # For binary (bool) types, interpret the value as a binary literal.
+        if is_bool:
+            # If value is not a string, convert it to string
+            val = int(value, 2)
+        else:
+            val = value
+
+        # Ensure the value fits in the declared bits.
+        if bits < struct.calcsize(fmt) * 8:
+            mask = (1 << bits) - 1
+            val &= mask
+
+        # Pack the value into the minimal number of bytes.
+        packed_val = struct.pack(fmt, val)
+        # Create a full 4-byte block (all zeros)
+        block = bytearray(4)
+        # Insert the packed value into the beginning of the block.
+        block[:len(packed_val)] = packed_val
+
+        # Write the 4-byte block to memory.
+        self.mmap.seek(offset)
+        self.mmap.write(block)
+
+        # Debug
+        if self.verbose:
+            print(f"Wrote {var_name} to memory: {val}")
+
+        return None
+    
+    def _write_defaults(self):
+        """Write the default values to the memory map."""
+
+        # Debug
+        if self.verbose:
+            print("--------Writing default values to memory map--------")
+
+        for var in self.mmap_lookup.values():
+            var_name = var["name"]
+            default_value = var.get("default")
+            
+            if default_value is not None:
+                self.write_memory_var(var_name, default_value)
+            
+                # Debug
+                if self.verbose:
+                    print(f"Writing default value for {var_name}...")
+            else:
+                # Debug
+                if self.verbose:
+                    print(f"No default value for {var_name}; skipping...")
+
+        return None
 
     ##### Logging methods #####
     def update_logging(self):
@@ -383,5 +457,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     rp = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
-    rp.read_memory_all()
 
+    rp.read_memory_all()
+    val = rp.read_memory_var(var_name = "min_intensity_thresh[0]")
+    print(f"min_intensity_thresh[0]: {val}")
+    rp.write_memory_var(var_name = "min_intensity_thresh[0]", value = 100)
+    val = rp.read_memory_var(var_name = "min_intensity_thresh[0]")
+    print(f"min_intensity_thresh[0]: {val}")
+    
