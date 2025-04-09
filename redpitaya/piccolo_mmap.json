@@ -1,0 +1,145 @@
+{
+    "fads_parameters": [
+        {
+        "name": "fads_reset",
+        "addr": "0x000020",
+        "dtype": "1'b",
+        "default": "0"
+        },
+        {
+        "name": "enabled_channels",
+        "addr": "0x000300",
+        "dtype": "2'b",
+        "default": "11"
+        },
+        {
+        "name": "droplet_sensing_addr",
+        "addr": "0x000304",
+        "dtype": "3'b",
+        "default": "0"
+        },
+        {
+        "name": "sort_delay",
+        "addr": "0x000024",
+        "dtype": "32'd",
+        "default": 10,
+        "units": "microseconds"
+        },
+        {
+        "name": "sort_duration",
+        "addr": "0x000028",
+        "dtype": "32'd",
+        "default": 100,
+        "units": "microseconds"
+        },
+        {
+        "name": "camera_delay",
+        "addr": "0x00002c",
+        "dtype": "32'd",
+        "default": 100,
+        "units": "microseconds"
+        }
+    ],
+    "droplet_parameters": [
+        {
+        "name": "droplet_id",
+        "addr": "0x000200",
+        "dtype": "32'd"
+        },
+        {
+        "name": "cur_time_us",
+        "addr": "0x000250",
+        "dtype": "32'd",
+        "units": "microseconds"
+        },
+        {
+        "name": "cur_droplet_intensity",
+        "addr": ["0x000204", "0x000208"],
+        "dtype": "32'sd",
+        "units": "raw"
+        },
+        {
+        "name": "cur_droplet_width",
+        "addr": ["0x00021c", "0x000220"],
+        "dtype": "32'd",
+        "units": "clock cycles"
+        },
+        {
+        "name": "cur_droplet_area",
+        "addr": ["0x000234", "0x000238"],
+        "dtype": "32'sd",
+        "units": "cc x raw"
+        },
+        {
+        "name": "droplet_classification",
+        "addr": "0x00024c",
+        "dtype": "16'b"
+        }
+    ],
+    "sort_gates": [
+        {
+        "name": "min_intensity_thresh",
+        "addr": ["0x001000", "0x001004"],
+        "dtype": "14'sd",
+        "default": [650, 689],
+        "units": "raw"
+        },
+        {
+        "name": "low_intensity_thresh",
+        "addr": ["0x001020", "0x001024"],
+        "dtype": "14'sd",
+        "default": [900, 900],
+        "units": "raw"
+        },
+        {
+        "name": "high_intensity_thresh",
+        "addr": ["0x001040", "0x001044"],
+        "dtype": "14'sd",
+        "default": [6106, 6156],
+        "units": "raw"
+        },
+        {
+        "name": "min_width_thresh",
+        "addr": ["0x001060", "0x001064"],
+        "dtype": "32'd",
+        "default": [100, 0],
+        "units": "microseconds"
+        },
+        {
+        "name": "low_width_thresh",
+        "addr": ["0x001080", "0x001084"],
+        "dtype": "32'd",
+        "default": [100, 0],
+        "units": "microseconds"
+        },
+        {
+        "name": "high_width_thresh",
+        "addr": ["0x0010a0", "0x0010a4"],
+        "dtype": "32'd",
+        "default": [125000, 3437096703],
+        "units": "microseconds"
+        },
+        {
+        "name": "min_area_thresh",
+        "addr": ["0x0010c0", "0x0010c4"],
+        "dtype": "32'd",
+        "default": [0, 0],
+        "units": "cc x raw"
+        },
+        {
+        "name": "low_area_thresh",
+        "addr": ["0x0010e0", "0x0010e4"],
+        "dtype": "32'd",
+        "default": [1000000, 1000000],
+        "units": "cc x raw"
+        },
+        {
+        "name": "high_area_thresh",
+        "addr": ["0x001100", "0x001104"],
+        "dtype": "32'd",
+        "default": [3437096703, 3437096703],
+        "units": "cc x raw"
+        }
+    ]
+  }
+  

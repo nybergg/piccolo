@@ -1,0 +1,260 @@
+#-----------------------------------------------------------
+# Vivado v2020.1 (64-bit)
+# SW Build 2902540 on Wed May 27 19:54:49 MDT 2020
+# IP Build 2902112 on Wed May 27 22:43:36 MDT 2020
+# Start of session at: Fri Feb 28 14:43:46 2025
+# Process ID: 17112
+# Current directory: C:/Github/piccolo-fullstack/fpga/project
+# Command line: vivado.exe -gui_launcher_event rodinguilauncherevent15032 C:\Github\piccolo-fullstack\fpga\project\redpitaya.xpr
+# Log file: C:/Github/piccolo-fullstack/fpga/project/vivado.log
+# Journal file: C:/Github/piccolo-fullstack/fpga/project\vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project C:/Github/piccolo-fullstack/fpga/project/redpitaya.xpr
+INFO: [Project 1-313] Project file moved from 'C:/Github/RedPitaya-FPGA-master/prj/FADS/project' since last save.
+Scanning sources...
+Finished scanning sources
+INFO: [filemgmt 56-1] Board Part Repository Path: Directory not found as 'C:/Github/brd'; using path 'C:/Github/RedPitaya-FPGA-master/brd' instead.
+INFO: [IP_Flow 19-234] Refreshing IP repositories
+INFO: [IP_Flow 19-1704] No user IP repositories specified
+INFO: [IP_Flow 19-2313] Loaded Vivado IP repository 'C:/Xilinx/Vivado/2020.1/data/ip'.
+open_project: Time (s): cpu = 00:00:19 ; elapsed = 00:00:19 . Memory (MB): peak = 1023.449 ; gain = 0.000
+update_compile_order -fileset sources_1
+reset_run synth_1
+WARNING: [Vivado 12-1017] Problems encountered:
+1. Failed to delete one or more files in run directory C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1
+
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Fri Feb 28 14:46:33 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Fri Feb 28 14:46:34 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+launch_runs: Time (s): cpu = 00:00:03 ; elapsed = 00:00:08 . Memory (MB): peak = 1072.129 ; gain = 0.000
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Fri Feb 28 15:15:15 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Fri Feb 28 15:15:15 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Mon Mar 17 15:39:40 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Mon Mar 17 15:39:40 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Thu Mar 20 14:52:55 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Thu Mar 20 14:52:55 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Fri Mar 21 11:14:31 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Fri Mar 21 11:14:32 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+launch_runs: Time (s): cpu = 00:00:01 ; elapsed = 00:00:06 . Memory (MB): peak = 1072.129 ; gain = 0.000
+reset_run impl_1 -prev_step 
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+INFO: [Common 17-344] 'launch_runs' was cancelled
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Thu Mar 27 13:59:49 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Thu Mar 27 13:59:49 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run impl_1 -prev_step 
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Fri Mar 28 15:17:07 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Fri Mar 28 15:57:41 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Fri Mar 28 15:57:41 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+open_run impl_1
+INFO: [Device 21-403] Loading part xc7z010clg400-1
+Netlist sorting complete. Time (s): cpu = 00:00:01 ; elapsed = 00:00:00 . Memory (MB): peak = 1599.113 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 1008 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2203.266 ; gain = 0.000
+Restored from archive | CPU: 2.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2203.266 ; gain = 0.000
+Netlist sorting complete. Time (s): cpu = 00:00:00 ; elapsed = 00:00:00 . Memory (MB): peak = 2203.266 ; gain = 0.000
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 58 instances were transformed.
+  IOBUF => IOBUF (IBUF, OBUFT): 16 instances
+  OBUFDS => OBUFDS_DUAL_BUF (INV, OBUFDS(x2)): 2 instances
+  RAM32M => RAM32M (RAMD32(x6), RAMS32(x2)): 40 instances
+
+reset_run impl_1 -prev_step 
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Mon Mar 31 14:59:53 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Mon Mar 31 15:02:46 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Mon Mar 31 15:02:46 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+create_ip_run [get_files -of_objects [get_fileset sources_1] C:/Github/piccolo-fullstack/fpga/project/redpitaya.srcs/sources_1/bd/system/system.bd]
+refresh_design
+Netlist sorting complete. Time (s): cpu = 00:00:01 ; elapsed = 00:00:00 . Memory (MB): peak = 2436.344 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 1008 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:03 ; elapsed = 00:00:00 . Memory (MB): peak = 2436.344 ; gain = 0.000
+Restored from archive | CPU: 4.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:03 ; elapsed = 00:00:00 . Memory (MB): peak = 2436.344 ; gain = 0.000
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Mon Mar 31 15:48:35 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Mon Mar 31 15:48:36 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+create_ip_run [get_files -of_objects [get_fileset sources_1] C:/Github/piccolo-fullstack/fpga/project/redpitaya.srcs/sources_1/bd/system/system.bd]
+refresh_design
+Netlist sorting complete. Time (s): cpu = 00:00:01 ; elapsed = 00:00:00 . Memory (MB): peak = 2561.480 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 1008 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:03 ; elapsed = 00:00:00 . Memory (MB): peak = 2561.480 ; gain = 0.000
+Restored from archive | CPU: 4.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:03 ; elapsed = 00:00:00 . Memory (MB): peak = 2561.480 ; gain = 0.000
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Tue Apr  1 10:56:40 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Tue Apr  1 10:56:41 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+create_ip_run [get_files -of_objects [get_fileset sources_1] C:/Github/piccolo-fullstack/fpga/project/redpitaya.srcs/sources_1/bd/system/system.bd]
+refresh_design
+Netlist sorting complete. Time (s): cpu = 00:00:00 ; elapsed = 00:00:00 . Memory (MB): peak = 2702.977 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 1009 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2702.977 ; gain = 0.000
+Restored from archive | CPU: 2.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2702.977 ; gain = 0.000
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Tue Apr  1 12:53:01 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Tue Apr  1 12:53:01 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run impl_1 -prev_step 
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Tue Apr  1 14:44:30 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Tue Apr  1 16:25:15 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Tue Apr  1 16:25:16 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+create_ip_run [get_files -of_objects [get_fileset sources_1] C:/Github/piccolo-fullstack/fpga/project/redpitaya.srcs/sources_1/bd/system/system.bd]
+refresh_design
+Netlist sorting complete. Time (s): cpu = 00:00:00 ; elapsed = 00:00:00 . Memory (MB): peak = 2761.469 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 1007 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 1 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:03 ; elapsed = 00:00:00 . Memory (MB): peak = 2761.469 ; gain = 0.000
+Restored from archive | CPU: 4.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:03 ; elapsed = 00:00:00 . Memory (MB): peak = 2761.469 ; gain = 0.000
+CRITICAL WARNING: [Timing 38-282] The design failed to meet the timing requirements. Please see the timing summary report for details on the timing violations.
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Tue Apr  1 20:30:39 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Tue Apr  1 20:30:39 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+create_ip_run [get_files -of_objects [get_fileset sources_1] C:/Github/piccolo-fullstack/fpga/project/redpitaya.srcs/sources_1/bd/system/system.bd]
+refresh_design
+Netlist sorting complete. Time (s): cpu = 00:00:00 ; elapsed = 00:00:00 . Memory (MB): peak = 2811.156 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 1008 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2811.156 ; gain = 0.000
+Restored from archive | CPU: 2.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2811.156 ; gain = 0.000
+CRITICAL WARNING: [Timing 38-282] The design failed to meet the timing requirements. Please see the timing summary report for details on the timing violations.
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Wed Apr  2 11:20:36 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Wed Apr  2 11:20:36 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
+create_ip_run [get_files -of_objects [get_fileset sources_1] C:/Github/piccolo-fullstack/fpga/project/redpitaya.srcs/sources_1/bd/system/system.bd]
+refresh_design
+Netlist sorting complete. Time (s): cpu = 00:00:00 ; elapsed = 00:00:00 . Memory (MB): peak = 2865.637 ; gain = 0.000
+INFO: [Netlist 29-17] Analyzing 999 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Reading XDEF placement.
+Reading placer database...
+Reading XDEF routing.
+Read XDEF File: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2865.637 ; gain = 0.000
+Restored from archive | CPU: 3.000000 secs | Memory: 0.000000 MB |
+Finished XDEF File Restore: Time (s): cpu = 00:00:02 ; elapsed = 00:00:00 . Memory (MB): peak = 2865.637 ; gain = 0.000
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 2
+[Thu Apr  3 12:06:01 2025] Launched synth_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/synth_1/runme.log
+[Thu Apr  3 12:06:02 2025] Launched impl_1...
+Run output will be captured here: C:/Github/piccolo-fullstack/fpga/project/redpitaya.runs/impl_1/runme.log
