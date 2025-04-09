@@ -91,8 +91,8 @@ class UI:
             # Pull data from subprocess and update the datasource and plot:
             with self.dg_lock:
                 # Update pmt data:
+                self.source_PMT0.data = self.dg.data["pmt0"]
                 self.source_PMT1.data = self.dg.data["pmt1"]
-                self.source_PMT2.data = self.dg.data["pmt2"]
                 for key in self.rolling_source_2d:
                     self.rolling_source_2d[key].extend(self.dg.data2d[key])
                     if self.buffer_length == 0:
@@ -122,8 +122,8 @@ class UI:
 
     def _setup_data_sources(self):
         # Initialize data sources for the generated data:
-        self.source_PMT1 = ColumnDataSource(data=self.dg.data["pmt1"]) # s to ms
-        self.source_PMT2 = ColumnDataSource(data=self.dg.data["pmt2"])
+        self.source_PMT0 = ColumnDataSource(data=self.dg.data["pmt0"]) # s to ms
+        self.source_PMT1 = ColumnDataSource(data=self.dg.data["pmt1"])
         self.source_2d = ColumnDataSource(data=self.dg.data2d)
         self.rolling_source_2d = self.dg.data2d.copy()
         # Initialize data sources for the interactive callbacks:
@@ -202,7 +202,7 @@ class UI:
                 "end": 2,
                 "value": self.thresh,
                 "step": 0.01,
-                "title": "PMT 1 Threshold",
+                "title": "PMT 0 Threshold",
                 "bar_color": "mediumseagreen",
                 "callback": _threshold_changed,
             },
@@ -330,16 +330,16 @@ class UI:
         self.plot.line(
             "x",
             "y",
-            source=self.source_PMT1,
+            source=self.source_PMT0,
             color="mediumseagreen",
-            legend_label="PMT1",
+            legend_label="PMT0",
             )
         self.plot.line(
             "x",
             "y",
-            source=self.source_PMT2,
+            source=self.source_PMT1,
             color="royalblue",
-            legend_label="PMT2"
+            legend_label="PMT1"
             )
         # create threshold lines:
         self.thresh_line = Span(
