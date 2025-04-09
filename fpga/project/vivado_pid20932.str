@@ -125,3 +125,21 @@ dismissDialog("Open Project"); // bz (cs)
 // Tcl Command: 'rdi::info_commands {device::*}'
 // Tcl Command: 'rdi::info_commands {debug::*}'
 // Tcl Command: 'rdi::info_commands {*}'
+// WARNING: HSwingWorker (Refresh Filesets Swing Worker) is taking 1420 ms. Increasing delay to 4260 ms.
+// [Engine Memory]: 1,065 MB (+58020kb) [00:01:04]
+// Tcl Message: update_compile_order -fileset sources_1 
+// PAPropertyPanels.initPanels (red_pitaya_top_4ADC.sv) elapsed time: 0.2s
+// [GUI Memory]: 142 MB (+11948kb) [00:01:22]
+// Elapsed time: 31 seconds
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top_4ADC (red_pitaya_top_4ADC.sv)]", 2, true); // B (F, cs) - Node
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv)]", 1); // B (F, cs)
+collapseTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv)]", 1); // B (F, cs)
+expandTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv)]", 1); // B (F, cs)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv), pll : red_pitaya_pll (red_pitaya_pll.sv)]", 2, false); // B (F, cs)
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv), ps : red_pitaya_ps (red_pitaya_ps.sv)]", 3, true); // B (F, cs) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv)]", 1, true); // B (F, cs) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv)]", 1, true); // B (F, cs) - Node
+selectTree(PAResourceEtoH.FileSetPanel_FILE_SET_PANEL_TREE, "[root, Design Sources, red_pitaya_top (red_pitaya_top.sv)]", 1, true, false, false, false, false, true); // B (F, cs) - Double Click - Node
+// Launch External Editor: 'C:/Users/microfluidics/AppData/Local/Programs/Microsoft VS Code/Code.exe "C:/Github/piccolo/fpga/project/redpitaya.srcs/sources_1/imports/RedPitaya-FPGA-master/prj/FADS/rtl/red_pitaya_top.sv"'
+// WARNING: HEventQueue.dispatchEvent() is taking  4291 ms.
+// WARNING: HSwingWorker (Refresh Filesets Swing Worker) is taking 2383 ms. Increasing delay to 7149 ms.
