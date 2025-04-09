@@ -1,0 +1,127 @@
+/*
+
+Xilinx Vivado v2020.1 (64-bit) [Major: 2020, Minor: 1]
+SW Build: 2902540 on Wed May 27 19:54:49 MDT 2020
+IP Build: 2902112 on Wed May 27 22:43:36 MDT 2020
+
+Process ID (PID): 20932
+License: Customer
+
+Current time: 	Tue Apr 08 22:19:40 PDT 2025
+Time zone: 	Pacific Standard Time (America/Los_Angeles)
+
+OS: Windows 10
+OS Version: 10.0
+OS Architecture: amd64
+Available processors (cores): 4
+
+Screen size: 2560x1600
+Screen resolution (DPI): 150
+Available screens: 1
+Default font: family=Segoe UI,name=Segoe UI,style=plain,size=18
+
+Java version: 	9.0.4 64-bit
+Java home: 	C:/Xilinx/Vivado/2020.1/tps/win64/jre9.0.4
+Java executable location: 	C:/Xilinx/Vivado/2020.1/tps/win64/jre9.0.4/bin/java.exe
+Java initial memory (-Xms): 	128 MB
+Java maximum memory (-Xmx):	 3 GB
+
+
+User name: 	microfluidics
+User home directory: C:/Users/microfluidics
+User working directory: C:/Github/piccolo/fpga/project
+User country: 	US
+User language: 	en
+User locale: 	en_US
+
+RDI_BASEROOT: C:/Xilinx/Vivado
+HDI_APPROOT: C:/Xilinx/Vivado/2020.1
+RDI_DATADIR: C:/Xilinx/Vivado/2020.1/data
+RDI_BINDIR: C:/Xilinx/Vivado/2020.1/bin
+
+Vivado preferences file location: C:/Users/microfluidics/AppData/Roaming/Xilinx/Vivado/2020.1/vivado.xml
+Vivado preferences directory: C:/Users/microfluidics/AppData/Roaming/Xilinx/Vivado/2020.1/
+Vivado layouts directory: C:/Users/microfluidics/AppData/Roaming/Xilinx/Vivado/2020.1/data/layouts
+PlanAhead jar file location: 	C:/Xilinx/Vivado/2020.1/lib/classes/planAhead.jar
+Vivado log file location: 	C:/Github/piccolo/fpga/project/vivado.log
+Vivado journal file location: 	C:/Github/piccolo/fpga/project/vivado.jou
+Engine tmp dir: 	C:/Github/piccolo/fpga/project/.Xil/Vivado-20932-E381-W10-2255
+
+Xilinx Environment Variables
+----------------------------
+XILINX: C:/Xilinx/Vivado/2020.1/ids_lite/ISE
+XILINX_DSP: C:/Xilinx/Vivado/2020.1/ids_lite/ISE
+XILINX_PLANAHEAD: C:/Xilinx/Vivado/2020.1
+XILINX_VIVADO: C:/Xilinx/Vivado/2020.1
+XILINX_VIVADO_HLS: C:/Xilinx/Vivado/2020.1
+
+
+GUI allocated memory:	138 MB
+GUI max memory:		3,072 MB
+Engine allocated memory: 962 MB
+
+Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.
+
+*/
+
+// TclEventType: START_GUI
+// Tcl Message: start_gui 
+// WARNING: HEventQueue.dispatchEvent() is taking  1554 ms.
+// TclEventType: PROJECT_OPEN_DIALOG
+// [GUI Memory]: 93 MB (+94910kb) [00:00:18]
+// [Engine Memory]: 962 MB (+857074kb) [00:00:18]
+// bz (cs):  Open Project : addNotify
+// Opening Vivado Project: C:\Github\piccolo\fpga\project\redpitaya.xpr. Version: Vivado v2020.1 
+// TclEventType: DEBUG_PROBE_SET_CHANGE
+// Tcl Message: open_project C:/Github/piccolo/fpga/project/redpitaya.xpr 
+// HMemoryUtils.trashcanNow. Engine heap size: 962 MB. GUI used memory: 66 MB. Current time: 4/8/25, 10:19:41 PM PDT
+// TclEventType: MSGMGR_MOVEMSG
+// TclEventType: FILE_SET_NEW
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_COMPLETED
+// TclEventType: RUN_STATUS_CHANGE
+// TclEventType: RUN_CURRENT
+// TclEventType: PROJECT_DASHBOARD_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: PROJECT_DASHBOARD_GADGET_NEW
+// TclEventType: PROJECT_DASHBOARD_GADGET_CHANGE
+// TclEventType: FILE_SET_CHANGE
+// TclEventType: PROJECT_NEW
+// [GUI Memory]: 105 MB (+7336kb) [00:00:39]
+// [GUI Memory]: 125 MB (+15464kb) [00:00:41]
+// WARNING: HEventQueue.dispatchEvent() is taking  4165 ms.
+// Tcl Message: open_project C:/Github/piccolo/fpga/project/redpitaya.xpr 
+// Tcl Message: INFO: [Project 1-313] Project file moved from 'C:/Github/piccolo-fullstack/fpga/project' since last save. 
+// Tcl Message: Scanning sources... Finished scanning sources 
+// Tcl Message: INFO: [IP_Flow 19-234] Refreshing IP repositories INFO: [IP_Flow 19-1704] No user IP repositories specified INFO: [IP_Flow 19-2313] Loaded Vivado IP repository 'C:/Xilinx/Vivado/2020.1/data/ip'. 
+// WARNING: HEventQueue.dispatchEvent() is taking  2317 ms.
+// WARNING: HEventQueue.dispatchEvent() is taking  1204 ms.
+// HMemoryUtils.trashcanNow. Engine heap size: 995 MB. GUI used memory: 75 MB. Current time: 4/8/25, 10:20:11 PM PDT
+// Project name: redpitaya; location: C:/Github/piccolo/fpga/project; part: xc7z010clg400-1
+// WARNING: HSwingWorker (Update Runs Swing Worker) is taking 8208 ms. Increasing delay to 3000 ms.
+// Tcl Message: open_project: Time (s): cpu = 00:00:35 ; elapsed = 00:00:32 . Memory (MB): peak = 1038.180 ; gain = 20.332 
+dismissDialog("Open Project"); // bz (cs)
+// WARNING: HTimer (FileMgr Design Graph Update Timer) is taking 450ms to process. Increasing delay to 3000 ms.
+// Tcl Command: 'rdi::info_commands {device::*}'
+// Tcl Command: 'rdi::info_commands {debug::*}'
+// Tcl Command: 'rdi::info_commands {*}'
