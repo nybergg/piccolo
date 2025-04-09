@@ -160,30 +160,7 @@ class PiccoloRP:
     
 
     ##### Memory reading and writing methods #####
-    def read_memory_all(self):
-        """Read all variables from mmap_info."""
-        if self.verbose:
-            print("--------Reading all variables from memory map--------")
-        
-        all_values = {}
-        for var in self.mmap_info:
-            var_name = var["name"]
-            val = self.read_memory_var(var_name)
-            all_values[var["name"]] = val            
-        
-        self.all_values = all_values
-
-        # Debug
-        if self.verbose:
-            print("Done reading all variables from memory mapped region.")
-        if self.very_verbose:
-            print("All variables read from memory mapped region:")
-            for var_name, val in all_values.items():
-                print(f"{var_name}: {val}")
-        
-        return None
-    
-    def read_memory_var(self, var_name):
+    def read_var(self, var_name):
         """Read a memory value from the specified address."""
         var_conf = self.mmap_lookup.get(var_name)
 
@@ -226,13 +203,96 @@ class PiccoloRP:
         
         return val
     
-    def write_memory_var(self, var_name, value):
-        """Write a memory value to the specified address."""
+    def read_drop_params(self):
+        """Read droplet parameters from memory."""
+        if self.verbose:
+            print("--------Reading droplet parameters from memory--------")
         
+        droplet_parameters = {}
+        for var in self.droplet_parameter_names:
+            val = self.read_var(var)
+            droplet_parameters[var] = val
+
         # Debug
         if self.verbose:
-            print("--------Writing variable to memory--------")
+            print("Done reading droplet parameters from memory.")
+        if self.very_verbose:
+            print("Droplet parameters read from memory:")
+            for var_name, val in droplet_parameters.items():
+                print(f"{var_name}: {val}")
 
+        self.droplet_parameters = droplet_parameters
+        
+        return None
+    
+    def read_fads_params(self):
+        """Read FADS parameters from memory."""
+        if self.verbose:
+            print("--------Reading FADS parameters from memory--------")
+
+        fads_params = {}
+        for var in self.fads_parameter_names:
+            val = self.read_var(var)
+            fads_params[var] = val
+
+        # Debug
+        if self.verbose:
+            print("Done reading FADS parameters from memory.")
+        if self.very_verbose:
+            print("FADS parameters read from memory:")
+            for var_name, val in fads_params.items():
+                print(f"{var_name}: {val}")
+
+        self.fads_params = fads_params
+
+        return None
+    
+    def read_sort_gates(self):
+        """Read sort gates from memory."""
+        if self.verbose:
+            print("--------Reading sort gates from memory--------")
+
+        sort_gates = {}
+        for var in self.sort_gate_names:
+            val = self.read_var(var)
+            sort_gates[var] = val
+
+        # Debug
+        if self.verbose:
+            print("Done reading sort gates from memory.")
+        if self.very_verbose:
+            print("Sort gates read from memory:")
+            for var_name, val in sort_gates.items():
+                print(f"{var_name}: {val}")
+
+        self.sort_gates = sort_gates
+
+        return None
+    
+    def read_all(self):
+        """Read all variables from mmap_info."""
+        if self.verbose:
+            print("--------Reading all variables from memory map--------")
+        
+        all_values = {}
+        for var in self.mmap_lookup:
+            val = self.read_var(var)
+            all_values[var] = val            
+        
+        self.all_values = all_values
+
+        # Debug
+        if self.verbose:
+            print("Done reading all variables from memory.")
+        if self.very_verbose:
+            print("All variables read from memory:")
+            for var_name, val in all_values.items():
+                print(f"{var_name}: {val}")
+        
+        return None
+    
+    def write_var(self, var_name, value):
+        """Write a memory value to the specified address."""
         var_conf = self.mmap_lookup.get(var_name)
 
         if var_conf is None:
@@ -284,25 +344,27 @@ class PiccoloRP:
             default_value = var.get("default")
             
             if default_value is not None:
-                self.write_memory_var(var_name, default_value)
-            
-                # Debug
-                if self.verbose:
-                    print(f"Writing default value for {var_name}...")
-            else:
-                # Debug
-                if self.verbose:
-                    print(f"No default value for {var_name}; skipping...")
+                self.write_var(var_name, default_value)
 
+        # Debug
+        if self.verbose:
+            print("Done writing default values to memory map.")
+    
         return None
 
+    def write_fads_params(self):
+        return None
+    
+    def write_sort_gates(self):
+        return None
+    
     ##### Logging methods #####
     def update_logging(self):
         timestamp_ms = time.time() * 1e3  # Convert to microseconds.
 
         # Reintroduce droplet ID consistency check.
         droplet_conf = self.fads_var["droplet_id"]
-        droplet_id_1 = self.read_memory(droplet_conf["addr"],
+        droplet_id_1 = self.read(droplet_conf["addr"],
                                         droplet_conf["dtype"],
                                         droplet_conf["size"],
                                         droplet_conf.get("mask_int"))
@@ -458,10 +520,18 @@ if __name__ == "__main__":
     
     rp = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
 
-    rp.read_memory_all()
-    val = rp.read_memory_var(var_name = "min_intensity_thresh[0]")
-    print(f"min_intensity_thresh[0]: {val}")
-    rp.write_memory_var(var_name = "min_intensity_thresh[0]", value = 100)
-    val = rp.read_memory_var(var_name = "min_intensity_thresh[0]")
-    print(f"min_intensity_thresh[0]: {val}")
+    # Test the memory mapping and reading/writing
+    print("--------Testing memory mapping--------")
+    rp.read_all()
+    
+    test_var = "min_width_thresh[0]"
+    test_val = 100
+    print(f"Testing read/write for {test_var} with test value of {test_val}...")
+    
+    val = rp.read_var(var_name = test_var)
+    print(f"Read value of {val} for {test_var}")
+    rp.write_var(var_name = test_var, value = test_val)
+    print(f"Wrote value of {test_val} to {test_var}")
+    val = rp.read_var(var_name = test_var)
+    print(f"Reread value of {val} for {test_var}")
     
