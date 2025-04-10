@@ -12,11 +12,11 @@ class DataGenerator:
                  num_channels=2,
                  signal_duration_ms=100,
                  sampling_interval_ms=0.02,
-                 baseline=0.01,
-                 drop_interval=1,
-                 drop_width=0.2,
-                 drop_cv=0.2,
-                 baseline_cv=0.01,
+                 drop_interval_ms=1,
+                 drop_width_ms=0.2,
+                 drop_signal_cv=0.2,
+                 signal_baseline=0.01,
+                 signal_baseline_cv=0.01,
                  min_width=0.1,
                  max_width=1,
                  name='Data_generator',
@@ -34,6 +34,9 @@ class DataGenerator:
             print("%s: opening..."%self.name)
         self.time_ms = np.arange(
             0, self.signal_duration_ms, self.sampling_interval_ms)
+        self.drop_arrival_time_ms = np.arange(
+            0, self.signal_duration_ms, self.drop_interval_ms)
+        
         self.set_threshold(0.03)
         self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
         self.pmt_gain = np.zeros(num_channels)
@@ -60,23 +63,21 @@ class DataGenerator:
     def _generate_signal(self):
         if self.very_verbose:
             print("\n%s: generate signal"%self.name)
-        # Generate Test PMT Signals:
         for ch in range(self.num_channels):
+            signal = np.zeros_like(self.time_ms)
+            # Generate drop signals:
+            for t in self.drop_arrival_time_ms:
+                drop_signal = np.exp(
+                    -((self.time_ms - t) / (
+                    2 * self.drop_width_ms / 2.355)) ** 2)
+                drop_signal *= np.random.normal(1, self.drop_signal_cv)
+                signal += drop_signal
             # Generate baseline noise:
-            baseline_noise = np.random.normal(loc=self.baseline,
-                                              scale=self.baseline_cv,
-                                              size=len(self.time_ms))
-            # Generate drops:
-            drops = np.zeros_like(self.time_ms)
-            for start in np.arange(0, self.signal_duration_ms, self.drop_interval):
-                drop = np.exp(
-                    -((self.time_ms - start) ** 2) / (
-                        2 * (self.drop_width / 2.355) ** 2))
-                drop *= np.random.normal(1, self.drop_cv)
-                drops += drop
+            baseline_noise = np.random.normal(loc=self.signal_baseline,
+                                              scale=self.signal_baseline_cv,
+                                              size=len(self.time_ms))            
             # Combine signals for this channel:
-            signal = baseline_noise + drops
-            signal = signal * self.pmt_gain[ch]
+            signal = (signal + baseline_noise) * self.pmt_gain[ch]
             self.data[f"pmt{ch}"] = {"x": self.time_ms, "y": signal}
         if self.very_verbose:
             print("\n%s: -> done generating signal"%self.name)            
