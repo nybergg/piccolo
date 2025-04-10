@@ -14,6 +14,8 @@ class PiccoloRP:
     def __init__(self, verbose=False, very_verbose=False):
         self.verbose = verbose
         self.very_verbose = very_verbose
+        self.stop_event = False
+        self.csv_flag = True
         self._map_memory()
         self._get_mmap_info()
         self._write_defaults()
@@ -26,7 +28,7 @@ class PiccoloRP:
         
         # Debugging
         if self.verbose:
-            print("--------Mapping memory region--------")
+            print("\n--------Mapping memory region--------")
         if self.very_verbose:
             print(f"Memory mapping at address {hex(base_addr)} with size {map_size} bytes...")
 
@@ -45,7 +47,7 @@ class PiccoloRP:
         """Get information about the Piccolo variables and format for easy read/write."""
         # Debugging
         if self.verbose:
-            print("--------Loading memory map information--------")
+            print("\n--------Loading memory map information--------")
         
         # Load the JSON file containing the memory map information
         script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -206,7 +208,7 @@ class PiccoloRP:
     def read_drop_params(self):
         """Read droplet parameters from memory."""
         if self.verbose:
-            print("--------Reading droplet parameters from memory--------")
+            print("\n--------Reading droplet parameters from memory--------")
         
         droplet_parameters = {}
         for var in self.droplet_parameter_names:
@@ -228,7 +230,7 @@ class PiccoloRP:
     def read_fads_params(self):
         """Read FADS parameters from memory."""
         if self.verbose:
-            print("--------Reading FADS parameters from memory--------")
+            print("\n--------Reading FADS parameters from memory--------")
 
         fads_params = {}
         for var in self.fads_parameter_names:
@@ -250,7 +252,7 @@ class PiccoloRP:
     def read_sort_gates(self):
         """Read sort gates from memory."""
         if self.verbose:
-            print("--------Reading sort gates from memory--------")
+            print("\n--------Reading sort gates from memory--------")
 
         sort_gates = {}
         for var in self.sort_gate_names:
@@ -272,7 +274,7 @@ class PiccoloRP:
     def read_all(self):
         """Read all variables from mmap_info."""
         if self.verbose:
-            print("--------Reading all variables from memory map--------")
+            print("\n--------Reading all variables from memory map--------")
         
         all_values = {}
         for var in self.mmap_lookup:
@@ -333,11 +335,11 @@ class PiccoloRP:
         return None
     
     def _write_defaults(self):
-        """Write the default values to the memory map."""
+        """Write the default values to the memory."""
 
         # Debug
         if self.verbose:
-            print("--------Writing default values to memory map--------")
+            print("\n--------Writing default values to memory--------")
 
         for var in self.mmap_lookup.values():
             var_name = var["name"]
@@ -351,108 +353,77 @@ class PiccoloRP:
             print("Done writing default values to memory map.")
     
         return None
-
-    def write_fads_params(self):
-        return None
-    
-    def write_sort_gates(self):
-        return None
     
     ##### Logging methods #####
-    def update_logging(self):
+    def _initialize_csv(self):
+        """Open the CSV file and write the header. For multi-channel variables, expand headers."""
+        if self.verbose:
+            print("\n--------Initializing CSV logging--------")
+        
+        # Log file name with timestamp
+        csv_filename = f"piccolo_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        self.csv_filename = os.path.join(os.getcwd(), csv_filename)
+
+        # Initialize the CSV file
+        self.csv_file = open(self.csv_filename, "w", newline="")
+        self.csv_writer = csv.writer(self.csv_file)
+        header = ["timestamp_ms"]
+        
+        for var in self.mmap_lookup:
+            header.append(var)
+        self.csv_writer.writerow(header)
+        self.csv_file.flush()
+        print(f"Log file {self.csv_filename} initialized.")
+
+    def _update_logging(self):
         timestamp_ms = time.time() * 1e3  # Convert to microseconds.
 
-        # Reintroduce droplet ID consistency check.
-        droplet_conf = self.fads_var["droplet_id"]
-        droplet_id_1 = self.read(droplet_conf["addr"],
-                                        droplet_conf["dtype"],
-                                        droplet_conf["size"],
-                                        droplet_conf.get("mask_int"))
+        if self.verbose:
+            print("\n--------Updating log values--------")
 
-        raw_values = {}
-        # Read each log variable using its configuration.
-        for var in self.log_var:
-            var_conf = self.fads_var[var]
-            raw_values[var] = self.read_memory(var_conf["addr"],
-                                               var_conf["dtype"],
-                                               var_conf["size"],
-                                               var_conf.get("mask_int"))
+        # Read droplet ID from memory.
+        drop_id_preread = self.read_var("droplet_id")
+        self.read_all()
 
-        # Read droplet_id again.
-        droplet_id_2 = self.read_memory(droplet_conf["addr"],
-                                        droplet_conf["dtype"],
-                                        droplet_conf["size"],
-                                        droplet_conf.get("mask_int"))
-        if droplet_id_1 != droplet_id_2:
-            # self.logger.info("Droplet ID changed during read; skipping logging.")
+        drop_id_postread = self.read_var("droplet_id")
+
+        if drop_id_preread != drop_id_postread:
+            if self.very_verbose:
+                print("Dropping log values due to droplet ID change.")
             return  # Skip logging if droplet ID changed.
-
-
-        # --- Conversion: Use the calibration object if conversion on PS is enabled ---
-        if self.convert_flag:
-            converted_values = {}
-            for var in self.log_var:
-                raw_val = raw_values.get(var)
-                if var in ["cur_droplet_width", "min_width_thresh"]:
-                    converted_values[var] = self.conversion.convert_width(raw_val)
-                elif var in ["cur_droplet_intensity", "min_intensity_thresh"]:
-                    if isinstance(raw_val, list):
-                        conv = [self.conversion.convert_intensity(raw_val[0], "ch1")]
-                        if len(raw_val) > 1:
-                            conv.append(self.conversion.convert_intensity(raw_val[1], "ch2"))
-                        converted_values[var] = conv
-                    else:
-                        converted_values[var] = self.conversion.convert_intensity(raw_val, "ch1")
-                elif var in ["cur_droplet_area", "min_area_thresh"]:
-                    if isinstance(raw_val, list):
-                        conv = [self.conversion.convert_area(raw_val[0], "ch1")]
-                        if len(raw_val) > 1:
-                            conv.append(self.conversion.convert_area(raw_val[1], "ch2"))
-                        converted_values[var] = conv
-                    else:
-                        converted_values[var] = self.conversion.convert_area(raw_val, "ch1")
-                elif var in ["droplet_classification"]:
-                    converted_values[var] = dtype(raw_val, '016b')
-                else:
-                    # No conversion for other variables.
-                    converted_values[var] = raw_val
-                
-                log_values = converted_values
-        else:
-            log_values = raw_values
 
         # --- CSV Logging: Write the timestamp and values to the CSV file ---
         if self.csv_flag:
             # Build the CSV row using the (converted or raw) values.
+            if self.verbose:
+                print("Writing droplet parameters to CSV file...")
             row = [timestamp_ms]
-            for var in self.log_var:
-                val = log_values.get(var)
-                if isinstance(val, list):
-                    row.extend(val)
-                else:
-                    row.append(val)
+            for var in self.mmap_lookup:
+                val = self.all_values[var]
+                row.append(val)
 
             self.csv_writer.writerow(row)
             self.csv_file.flush()
         
-        # Update the latest log data with the timestamp and values
-        self.latest_log_data = json.dumps({"timestamp_ms": timestamp_ms, **log_values})
 
     def start_logging(self):
+        if self.verbose:
+            print("\n--------Starting logging--------")
+        duration = 3  # seconds
+        start_time = time.time()
         try:
-            while not self._stop_event.is_set():
-                self.update_logging()
-                time.sleep(0.0001)
+            while time.time() - start_time < duration:
+                self._update_logging()
+                time.sleep(0.00011)
         except KeyboardInterrupt:
-            self.logger.info("Logging interrupted by user.")
+            print("Logging interrupted by user.")
         finally:
             self.stop_logging()
 
     def stop_logging(self):
-        self._stop_event.set()
-        if self.csv_flag and hasattr(self, "csv_file") and not self.csv_file.closed:
-            self.csv_file.close()
-        self.logger.info("Logging stopped.")
+        self.stop_event = True
+        self.csv_file.close()
+        print("Logging stopped.")
 
     def _convert_width(self, raw):
         """
@@ -495,22 +466,6 @@ class PiccoloRP:
         # Clock frequency in MHz for time conversions.
         self.clock_calibration = config.get("clock_MHz", 125)
         
-    def _initialize_csv(self):
-        """Open the CSV file and write the header. For multi-channel variables, expand headers."""
-        self.csv_file = open(self.csv_filename, "w", newline="")
-        self.csv_writer = csv.writer(self.csv_file)
-        header = ["timestamp_ms"]
-        for var in self.log_var:
-            var_conf = self.fads_var[var]
-            if isinstance(var_conf["addr"], list):
-                header.extend([f"{var}_ch{i+1}" for i in range(len(var_conf["addr"]))])
-            else:
-                header.append(var)
-        self.csv_writer.writerow(header)
-        self.csv_file.flush()
-        print(f"Log file {self.csv_filename} initialized.")
-
-    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -534,4 +489,14 @@ if __name__ == "__main__":
     print(f"Wrote value of {test_val} to {test_var}")
     val = rp.read_var(var_name = test_var)
     print(f"Reread value of {val} for {test_var}")
+
+    # Test the logging
+    print("--------Testing logging--------")
+    rp._initialize_csv()
+    rp.start_logging()
+    time.sleep(10)  # Log for 10 seconds
+    rp.stop_logging()
+    print("Logging test completed.")
+
+
     
