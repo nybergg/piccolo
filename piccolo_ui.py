@@ -68,8 +68,10 @@ class UI:
             # Pull data from subprocess and update the datasource and plot:
             with self.dg_lock:
                 # Update pmt data:
-                self.source_PMT0.data = self.dg.data["pmt0"]
-                self.source_PMT1.data = self.dg.data["pmt1"]
+                self.source_PMT0.data = {'x':self.dg.time_ms,
+                                         'y':self.dg.signal[0]}
+                self.source_PMT1.data = {'x':self.dg.time_ms,
+                                         'y':self.dg.signal[1]}
                 for key in self.rolling_source_2d:
                     self.rolling_source_2d[key].extend(self.dg.data2d[key])
                     if self.buffer_length == 0:
@@ -98,9 +100,11 @@ class UI:
         return None
 
     def _setup_data_sources(self):
-        # Initialize data sources for the generated data:
-        self.source_PMT0 = ColumnDataSource(data=self.dg.data["pmt0"]) # s to ms
-        self.source_PMT1 = ColumnDataSource(data=self.dg.data["pmt1"])
+        # Initialize data sources for the generated data (s to ms):
+        self.source_PMT0 = ColumnDataSource(data={'x':self.dg.time_ms,
+                                                  'y':self.dg.signal[0]})
+        self.source_PMT1 = ColumnDataSource(data={'x':self.dg.time_ms,
+                                                  'y':self.dg.signal[1]})
         self.source_2d = ColumnDataSource(data=self.dg.data2d)
         self.rolling_source_2d = self.dg.data2d.copy()
         # Initialize data sources for the interactive callbacks:
