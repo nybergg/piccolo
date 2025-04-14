@@ -6,8 +6,13 @@ import threading
 import struct
 import os
 import mmap
-import logging
 import argparse
+import socket
+
+# Red Pitaya API imports
+import sys
+sys.path.append("/opt/redpitaya/lib/python")
+import rp  # Your Red Pitaya API module
 
 
 class PiccoloRP:
@@ -20,7 +25,7 @@ class PiccoloRP:
         self._get_mmap_info()
         self._write_defaults()
     
-    ##### Memory mapping methods #####
+    ################ Memory mapping methods ################
     def _map_memory(self):
         """Map the memory map region."""
         base_addr = 0x40600000
@@ -161,7 +166,7 @@ class PiccoloRP:
         return None
     
 
-    ##### Memory reading and writing methods #####
+    ################ Memory read and write methods ################
     def read_var(self, var_name):
         """Read a memory value from the specified address."""
         var_conf = self.mmap_lookup.get(var_name)
@@ -354,7 +359,24 @@ class PiccoloRP:
     
         return None
     
-    ##### Logging methods #####
+    # def _write_sort_gates(self):
+    #     """Write sort gates to memory."""
+    #     # TODO: broken method need to clean up
+    #     # Debug
+    #     if self.verbose:
+    #         print("\n--------Writing sort gates to memory--------")
+
+    #     for var in self.sort_gate_names:
+    #         val = self.sort_gates(var)
+    #         self.write_var(var, val)
+
+    #     # Debug
+    #     if self.verbose:
+    #         print("Done writing default values to memory map.")
+    
+    #     return None
+    
+    ################ Logging methods ################
     def _initialize_csv(self):
         """Open the CSV file and write the header. For multi-channel variables, expand headers."""
         if self.verbose:
@@ -425,47 +447,146 @@ class PiccoloRP:
         self.csv_file.close()
         print("Logging stopped.")
 
-    def _convert_width(self, raw):
-        """
-        Convert clock cycles to milliseconds.
-        The conversion factor is determined by the clock frequency: (clock_MHz * 1000) cycles per millisecond.
-        """
-        factor = self.clock_calibration * 1000  # cycles per millisecond
-        if isinstance(raw, list):
-            return [x / factor for x in raw]
-        return raw / factor
+    # def _convert_width(self, raw):
+    #     """
+    #     Convert clock cycles to milliseconds.
+    #     The conversion factor is determined by the clock frequency: (clock_MHz * 1000) cycles per millisecond.
+    #     """
+    #     factor = self.clock_calibration * 1000  # cycles per millisecond
+    #     if isinstance(raw, list):
+    #         return [x / factor for x in raw]
+    #     return raw / factor
     
-    def _convert_intensity(self, raw, channel):
-        """
-        Convert raw intensity to volts using calibration parameters for the specified channel.
-        """
-        if channel not in self.voltage_calibration:
-            raise ValueError(f"Calibration parameters for channel {channel} not found.")
-        params = self.voltage_calibration[channel]
-        return (raw - params["offset"]) * params["gain"] / params["buffer_size"]
+    # def _convert_intensity(self, raw, channel):
+    #     """
+    #     Convert raw intensity to volts using calibration parameters for the specified channel.
+    #     """
+    #     if channel not in self.voltage_calibration:
+    #         raise ValueError(f"Calibration parameters for channel {channel} not found.")
+    #     params = self.voltage_calibration[channel]
+    #     return (raw - params["offset"]) * params["gain"] / params["buffer_size"]
     
-    def _convert_area(self, raw, channel):
-        """
-        Convert raw area (clock cycles x raw intensity) to V·ms.
-        First converts the raw value to volts, then converts clock cycles to milliseconds using the clock_MHz value.
-        """
-        if channel not in self.voltage_calibration:
-            raise ValueError(f"Calibration parameters for channel {channel} not found.")
-        params = self.voltage_calibration[channel]
-        factor = self.clock_calibration * 1000  # cycles per millisecond
-        return ((raw - params["offset"]) * params["gain"] / params["buffer_size"]) / factor
+    # def _convert_area(self, raw, channel):
+    #     """
+    #     Convert raw area (clock cycles x raw intensity) to V·ms.
+    #     First converts the raw value to volts, then converts clock cycles to milliseconds using the clock_MHz value.
+    #     """
+    #     if channel not in self.voltage_calibration:
+    #         raise ValueError(f"Calibration parameters for channel {channel} not found.")
+    #     params = self.voltage_calibration[channel]
+    #     factor = self.clock_calibration * 1000  # cycles per millisecond
+    #     return ((raw - params["offset"]) * params["gain"] / params["buffer_size"]) / factor
     
-    def _get_calibration(self, config_path):
-        """
-        Reads calibration configuration from a JSON file and initializes calibration parameters.
-        """
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        # Calibration parameters for voltage conversion.
-        self.voltage_calibration = config.get("voltage_calibration", {})
-        # Clock frequency in MHz for time conversions.
-        self.clock_calibration = config.get("clock_MHz", 125)
+    # def _get_calibration(self, config_path):
+        # """
+        # Reads calibration configuration from a JSON file and initializes calibration parameters.
+        # """
+        # with open(config_path, "r") as f:
+        #     config = json.load(f)
+        # # Calibration parameters for voltage conversion.
+        # self.voltage_calibration = config.get("voltage_calibration", {})
+        # # Clock frequency in MHz for time conversions.
+        # self.clock_calibration = config.get("clock_MHz", 125)
         
+    
+    ################ Oscilliscope methods ################
+    def _get_ADC_data(self, continuous=False):
+        """Read the ADC data from the memory."""    
+        dec = rp.RP_DEC_64
+        trig_dly = 8191
+        acq_trig_sour = rp.RP_TRIG_SRC_NOW
+        N = 16384
+
+        # Initialize Red Pitaya API
+        rp.rp_Init()
+        rp.rp_AcqReset()
+        rp.rp_AcqSetDecimation(dec)
+        rp.rp_AcqSetTriggerDelay(trig_dly)
+    
+        try:
+            while True:  # Keep acquiring & streaming
+                if self.verbose:
+                    print("\n--------Acquiring ADC data--------")
+                
+                rp.rp_AcqStart()
+                rp.rp_AcqSetTriggerSrc(acq_trig_sour)
+
+                # Wait for trigger
+                while rp.rp_AcqGetTriggerState()[1] != rp.RP_TRIG_STATE_TRIGGERED:
+                    time.sleep(0.1)  # Avoid CPU overuse
+
+                # Fill state
+                while 1:
+                    if rp.rp_AcqGetBufferFillState()[1]:
+                        break
+
+                # Get new data from ADC
+                ch1_buffer = rp.fBuffer(N)
+                ch2_buffer = rp.fBuffer(N)
+                rp.rp_AcqGetLatestDataV(rp.RP_CH_1, N, ch1_buffer)
+                rp.rp_AcqGetLatestDataV(rp.RP_CH_2, N, ch2_buffer)
+
+                # Convert to list for streaming
+                ch1_data = [ch1_buffer[i] for i in range(N)]
+                ch2_data = [ch2_buffer[i] for i in range(N)]
+
+                # Store the data as attribute to class
+                self.ch1_data = ch1_data
+                self.ch2_data = ch2_data
+
+                if self.client_socket is not None:
+                    self.client_socket.sendall(struct.pack(f'{N}f', *ch1_data))
+                    self.client_socket.sendall(struct.pack(f'{N}f', *ch2_data))
+
+
+                if self.verbose:
+                    print("ADC data acquired successfully.")
+                if self.very_verbose:
+                    # print first 20 values of each channel
+                    print("First 20 values of ADC 1 data:", ch1_data[:20])
+                    print("First 20 values of ADC 2 data:", ch2_data[:20])
+
+                if not continuous:
+                    break
+                                 
+
+        except (BrokenPipeError, ConnectionResetError):
+            print("Client disconnected.")
+        except Exception as e:
+            print(f"Error acquiring signals: {e}")
+        finally:
+            rp.rp_Release()
+            print("Red Pitaya resources released.")
+    
+        return None
+    
+    def osc_server(self):
+        """ TCP server that streams ADC data to a connected client """
+        tcp_port = 5000
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('', tcp_port))
+        server_socket.listen(1)
+        print(f"TCP server listening on port {tcp_port}")
+        self.client_socket = None
+
+        while True:
+            self.client_socket, addr = server_socket.accept()
+            print(f"Connection accepted from {addr}")
+
+            try:
+                self._get_ADC_data(continuous=True)
+                # client_socket.sendall(struct.pack(f'{16384}f', *self.ch1_data))
+                # client_socket.sendall(struct.pack(f'{16384}f', *self.ch2_data))
+            except Exception as e:
+                print(f"Error while streaming: {e}")
+            finally:
+                self.client_socket.close()
+                print("Client disconnected.")
+
+
+        return None
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -473,30 +594,36 @@ if __name__ == "__main__":
     parser.add_argument("--very_verbose", action="store_true", help="Enable very verbose mode")
     args = parser.parse_args()
     
-    rp = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
+    piccolo = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
 
+    
     # Test the memory mapping and reading/writing
     print("--------Testing memory mapping--------")
-    rp.read_all()
+    piccolo.read_all()
+
+    # Test the ADC data acquisition
+    print("--------Testing ADC data acquisition--------")
+    piccolo._get_ADC_data()
+
+    # Test ADC server
+    piccolo.osc_server()
     
-    test_var = "min_width_thresh[0]"
-    test_val = 100
-    print(f"Testing read/write for {test_var} with test value of {test_val}...")
+    # test_var = "min_width_thresh[0]"
+    # test_val = 100
+    # print(f"Testing read/write for {test_var} with test value of {test_val}...")
     
-    val = rp.read_var(var_name = test_var)
-    print(f"Read value of {val} for {test_var}")
-    rp.write_var(var_name = test_var, value = test_val)
-    print(f"Wrote value of {test_val} to {test_var}")
-    val = rp.read_var(var_name = test_var)
-    print(f"Reread value of {val} for {test_var}")
+    # val = rp.read_var(var_name = test_var)
+    # print(f"Read value of {val} for {test_var}")
+    # rp.write_var(var_name = test_var, value = test_val)
+    # print(f"Wrote value of {test_val} to {test_var}")
+    # val = rp.read_var(var_name = test_var)
+    # print(f"Reread value of {val} for {test_var}")
 
     # Test the logging
-    print("--------Testing logging--------")
-    rp._initialize_csv()
-    rp.start_logging()
-    time.sleep(10)  # Log for 10 seconds
-    rp.stop_logging()
-    print("Logging test completed.")
+    # print("--------Testing logging--------")
+    # rp._initialize_csv()
+    # rp.start_logging()
+    # print("Logging test completed.")
 
-
+    print("\n////////// All Red Pitaya Testing Complete ///////////")
     
