@@ -24,6 +24,7 @@ class PiccoloRP:
         self._map_memory()
         self._get_mmap_info()
         self._write_defaults()
+        self.client_socket = None
     
     ################ Memory mapping methods ################
     def _map_memory(self):
@@ -560,7 +561,9 @@ class PiccoloRP:
     
         return None
     
-    def osc_server(self):
+
+    ################ Server methods ################
+    def _adc_server(self):
         """ TCP server that streams ADC data to a connected client """
         tcp_port = 5000
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -568,24 +571,35 @@ class PiccoloRP:
         server_socket.bind(('', tcp_port))
         server_socket.listen(1)
         print(f"TCP server listening on port {tcp_port}")
-        self.client_socket = None
 
         while True:
             self.client_socket, addr = server_socket.accept()
             print(f"Connection accepted from {addr}")
 
             try:
-                self._get_ADC_data(continuous=True)
-                # client_socket.sendall(struct.pack(f'{16384}f', *self.ch1_data))
-                # client_socket.sendall(struct.pack(f'{16384}f', *self.ch2_data))
+                while True:
+                    header = self.client_socket.recv(16)
+                    if not header:
+                        print("Client disconnected.")
+                        break
+
+                    opcode = struct.unpack("I", header[:4])[0]
+
+                    if opcode == 3:
+                        self._get_ADC_data(continuous=False)  # Stream once per command
+                    elif opcode == 99:  # Shutdown opcode
+                        print("Shutdown command received. Exiting server loop.")
+                        return
+                    else:
+                        print(f"Unknown opcode received: {opcode}")
             except Exception as e:
-                print(f"Error while streaming: {e}")
+                print(f"Error in server loop: {e}")
             finally:
-                self.client_socket.close()
-                print("Client disconnected.")
+                if self.client_socket:
+                    self.client_socket.close()
+                    print("Client connection closed.")
 
 
-        return None
     
 
 if __name__ == "__main__":
@@ -596,7 +610,6 @@ if __name__ == "__main__":
     
     piccolo = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
 
-    
     # Test the memory mapping and reading/writing
     print("--------Testing memory mapping--------")
     piccolo.read_all()
@@ -606,7 +619,7 @@ if __name__ == "__main__":
     piccolo._get_ADC_data()
 
     # Test ADC server
-    piccolo.osc_server()
+    piccolo._adc_server()
     
     # test_var = "min_width_thresh[0]"
     # test_val = 100

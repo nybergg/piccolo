@@ -32,75 +32,52 @@ class Instrument:
         self.rp_dir = rp_dir
         self.verbose = verbose
         self.very_verbose = very_verbose
-        self._get_rp_login()
 
-    def deploy_and_run(self):
-        self._connect()
-        remote_script = self._transfer()
-        output, errors = self._run_piccolo_rp(remote_script)
-        self.ssh.close()
-        return output, errors
 
-    def _get_rp_login(self):
-        # Debug
-        if self.very_verbose:
-            print("\nGetting Red Pitaya login information")
-
+    def launch_piccolo_rp(self):
+        """ Get the local information for the Red Pitaya and run the script on it"""
+        
+        # Load the Red Pitaya login information from a JSON file
         with open("redpitaya/rp_login_vpn.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
-        self.username = rp_login_json["username"]
-        self.password = rp_login_json["password"]
+        username = rp_login_json["username"]
+        password = rp_login_json["password"]
         
         # Debug
+        if self.verbose:
+            print("\nRed Pitaya login information loaded successfully")
         if self.very_verbose:
             print(f"IP: {self.ip}")
-            print(f"Username: {self.username}")
-            print(f"Password: {self.password}")
+            print(f"Username: {username}")
+            print(f"Password: {password}")
 
-        if self.verbose:
-            print("\nRed Pitaya login information retrieved successfully")  
-        return None
-        
-    def _connect(self):
-        # Debug
-        if self.very_verbose:
-            print("\nConnecting to Red Pitaya...")
-        
-        self.ssh = paramiko.SSHClient()
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(self.ip, username=self.username, password=self.password)
-        self.ssh.exec_command(f"mkdir -p {self.rp_dir}")
+        # Connect to the Red Pitaya and add directory if missing
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(self.ip, username=username, password=password)
+        ssh.exec_command(f"mkdir -p {self.rp_dir}")
         
         # Debug
         if self.verbose:
             print("\nConnected to Red Pitaya successfully")
-        return None
-
-    def _transfer(self):
-        if self.very_verbose:
-            print("\nTransferring script to Red Pitaya...")
         
+        # Transfer local script to the Red Pitaya
         remote_path = os.path.join(self.rp_dir, os.path.basename(self.local_script))
-        with SCPClient(self.ssh.get_transport()) as scp:
+        with SCPClient(ssh.get_transport()) as scp:
             scp.put(self.local_script, remote_path)
 
         # Debug
         if self.verbose:
             print(f"\nScript transferred to {remote_path} successfully")
+            print(f"\nRunning script on Red Pitaya...")
 
-        return remote_path
-
-    def _run_piccolo_rp(self, remote_path):
-        # Debug
-        if self.very_verbose:
-            print("\nRunning script on Red Pitaya...")
-        
+        # Run the script on the Red Pitaya
         args = " ".join(self.script_args)
         script = os.path.basename(remote_path)
         cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {script} {args}"'
-        stdin, stdout, stderr = self.ssh.exec_command(cmd, get_pty=True)
+        _, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
 
         # Debug            
         if self.very_verbose:
@@ -111,7 +88,12 @@ class Instrument:
 
         if self.verbose:
             print("\nScript executed successfully. Shell to Red Pitaya closed")
+        
+        # Close connection to Red Pitaya
+        ssh.close()
+
         return stdout.read(), stderr.read()
+    
     
     def osc_stream(self):
         
@@ -180,17 +162,17 @@ if __name__ == "__main__":
     instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing0414", verbose=True, very_verbose=True)
 
     input("Press Enter to initiate the deploy and run thread on Red Pitaya...")
-    # launch_thread = threading.Thread(target=instrument.deploy_and_run, daemon=True)
-    osc_thread = threading.Thread(target=instrument.osc_stream, daemon=True)
+    launch_thread   = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
+    osc_thread      = threading.Thread(target=instrument.osc_stream, daemon=True)
     
     try:
         
-        # # Start the thread to deploy and run the script
-        # input("Press Enter to deploy and run the script on Red Pitaya...")
-        # launch_thread.start()
-        # # Wait for the thread to finish
+        # Start the thread to deploy and run the script
+        input("Press Enter to deploy and run the script on Red Pitaya...")
+        launch_thread.start()
+        # Wait for the thread to finish
         # launch_thread.join()
-        # print("Launch thread finished.")
+        print("Launch thread in process...")
         
         # Start osc server thread
         input("Press Enter to start the osc server...")
