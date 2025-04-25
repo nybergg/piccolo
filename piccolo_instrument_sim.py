@@ -10,13 +10,13 @@ from scipy.stats import gaussian_kde
 class DataGenerator:
     def __init__(self,
                  num_channels=2,
-                 sampling_interval=0.02,    # time units in ms
-                 signal_duration=100,
-                 baseline=0.01,
-                 drop_interval=1,
-                 drop_width=0.2,
-                 drop_cv=0.2,
-                 baseline_cv=0.01,
+                 signal_duration_ms=100,
+                 sampling_interval_ms=0.02,
+                 drop_interval_ms=1,
+                 drop_width_ms=0.2,
+                 drop_signal_cv=0.2,
+                 signal_baseline=0.01,
+                 signal_baseline_cv=0.01,
                  min_width=0.1,
                  max_width=1,
                  name='Data_generator',
@@ -32,13 +32,16 @@ class DataGenerator:
         # init:
         if self.verbose:
             print("%s: opening..."%self.name)
+        self.time_ms = np.arange(
+            0, self.signal_duration_ms, self.sampling_interval_ms)
+        self.signal = [np.zeros_like(self.time_ms)] * num_channels
+        self.drop_arrival_time_ms = np.arange(
+            0, self.signal_duration_ms, self.drop_interval_ms)
         self.set_threshold(0.03)
         self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
         self.pmt_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_pmt_gain(ch, 0.5)
-        self.data = {"pmt0": {"x": [0], "y": [0]},
-                     "pmt1": {"x": [0], "y": [0]}}
         self.data2d = {"x": [0], "y": [0], "density": [0]}
         self._running = False
         if self.verbose:
@@ -58,23 +61,21 @@ class DataGenerator:
     def _generate_signal(self):
         if self.very_verbose:
             print("\n%s: generate signal"%self.name)
-        # Generate Test PMT Signals:
-        t = np.arange(0, self.signal_duration, self.sampling_interval)
         for ch in range(self.num_channels):
+            signal = np.zeros_like(self.time_ms)
+            # Generate drop signals:
+            for t in self.drop_arrival_time_ms:
+                drop_signal = np.exp(
+                    -((self.time_ms - t) / (
+                    2 * self.drop_width_ms / 2.355)) ** 2)
+                drop_signal *= np.random.normal(1, self.drop_signal_cv)
+                signal += drop_signal
             # Generate baseline noise:
-            baseline_noise = np.random.normal(
-                loc=self.baseline, scale=self.baseline_cv, size=len(t))
-            # Generate drops:
-            drops = np.zeros_like(t)
-            for start in np.arange(0, self.signal_duration, self.drop_interval):
-                drop = np.exp(
-                    -((t - start) ** 2) / (2 * (self.drop_width / 2.355) ** 2))
-                drop *= np.random.normal(1, self.drop_cv)
-                drops += drop
+            baseline_noise = np.random.normal(loc=self.signal_baseline,
+                                              scale=self.signal_baseline_cv,
+                                              size=len(self.time_ms))            
             # Combine signals for this channel:
-            signal = baseline_noise + drops
-            signal = signal * self.pmt_gain[ch]
-            self.data[f"pmt{ch}"] = {"x": t, "y": signal}
+            self.signal[ch] = (signal + baseline_noise) * self.pmt_gain[ch]
         if self.very_verbose:
             print("\n%s: -> done generating signal"%self.name)            
         return None
@@ -84,16 +85,15 @@ class DataGenerator:
             print("\n%s: analyzing drops"%self.name)
         # Analyze Drop Parameters from PMT Signals:
         # Find drops based on the signal and threshold of the specified channel:
-        detection_signal = self.data[f"pmt{ch}"]["y"]
-        drops, _ = find_peaks(detection_signal, height=self.threshold)
+        drops, _ = find_peaks(self.signal[ch], height=self.threshold)
         if np.any(drops) == False:
             print('No peaks detected in reference channel')
         else:
             # Calculate fwhm of peaks to define time range for each drop:
             widths, _, left_ips, right_ips = peak_widths(
-                detection_signal, drops, rel_height=0.5)
+                self.signal[ch], drops, rel_height=0.5)
             # Convert widths to time units:
-            drop_widths = widths * self.sampling_interval  
+            drop_widths = widths * self.sampling_interval_ms  
             # Filter drops based on width constraints:
             valid_drop_indices = np.where(
                 (drop_widths >= self.min_width) &
@@ -127,23 +127,21 @@ class DataGenerator:
                     zip(valid_left_ips, valid_right_ips, valid_drop_widths),
                     start=1):
                     for ch in range(self.num_channels):
-                        # Specify the signal from a given channel:
-                        channel_signal = self.data[f"pmt{ch}"]["y"]
                         # Isolate baseline signal by excluding drop indices:
                         # (technically don't need to do this for every drop)
                         baseline_indices = np.setdiff1d(
-                            np.arange(len(channel_signal)), excluded_indices)
+                            np.arange(len(self.signal[ch])), excluded_indices)
                         baseline_signals[ch] = np.median(
-                            channel_signal[baseline_indices])
+                            self.signal[ch][baseline_indices])
                         baseline = np.mean(baseline_signals[ch])
                         # Isolate drop signal:
-                        drop_signal = channel_signal[int(left) : int(right)]
+                        drop_signal = self.signal[ch][int(left) : int(right)]
                         # Calculate drop parameters:
                         max_signal = drop_signal.max()
-                        drop_time = self.data[f"pmt{ch}"]["x"][int(left)]
-                        auc = simpson(drop_signal, dx=self.sampling_interval)
+                        drop_time = self.time_ms[int(left)]
+                        auc = simpson(drop_signal, dx=self.sampling_interval_ms)
                         fwhm = width
-                        drop_width = (right - left) * self.sampling_interval
+                        drop_width = (right - left) * self.sampling_interval_ms
                         # Append drop parameter dictionary:
                         results["channel"].append(ch)
                         results["id"].append(i)
