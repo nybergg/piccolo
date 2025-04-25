@@ -1,5 +1,5 @@
 {
-    "fads_parameters": [
+    "fpga_inputs": [
         {
         "name": "fads_reset",
         "addr": "0x000020",
@@ -38,45 +38,7 @@
         "dtype": "32'd",
         "default": 100,
         "units": "microseconds"
-        }
-    ],
-    "droplet_parameters": [
-        {
-        "name": "droplet_id",
-        "addr": "0x000200",
-        "dtype": "32'd"
         },
-        {
-        "name": "cur_time_us",
-        "addr": "0x000250",
-        "dtype": "32'd",
-        "units": "microseconds"
-        },
-        {
-        "name": "cur_droplet_intensity",
-        "addr": ["0x000204", "0x000208"],
-        "dtype": "32'sd",
-        "units": "raw"
-        },
-        {
-        "name": "cur_droplet_width",
-        "addr": ["0x00021c", "0x000220"],
-        "dtype": "32'd",
-        "units": "clock cycles"
-        },
-        {
-        "name": "cur_droplet_area",
-        "addr": ["0x000234", "0x000238"],
-        "dtype": "32'sd",
-        "units": "cc x raw"
-        },
-        {
-        "name": "droplet_classification",
-        "addr": "0x00024c",
-        "dtype": "16'b"
-        }
-    ],
-    "sort_gates": [
         {
         "name": "min_intensity_thresh",
         "addr": ["0x001000", "0x001004"],
@@ -140,6 +102,42 @@
         "default": [3437096703, 3437096703],
         "units": "cc x raw"
         }
+    ],
+    "fpga_outputs": [
+        {
+        "name": "droplet_id",
+        "addr": "0x000200",
+        "dtype": "32'd"
+        },
+        {
+        "name": "cur_time_us",
+        "addr": "0x000250",
+        "dtype": "32'd",
+        "units": "microseconds"
+        },
+        {
+        "name": "cur_droplet_intensity",
+        "addr": ["0x000204", "0x000208"],
+        "dtype": "32'sd",
+        "units": "raw"
+        },
+        {
+        "name": "cur_droplet_width",
+        "addr": ["0x00021c", "0x000220"],
+        "dtype": "32'd",
+        "units": "clock cycles"
+        },
+        {
+        "name": "cur_droplet_area",
+        "addr": ["0x000234", "0x000238"],
+        "dtype": "32'sd",
+        "units": "cc x raw"
+        },
+        {
+        "name": "droplet_classification",
+        "addr": "0x00024c",
+        "dtype": "16'b"
+        }   
     ]
   }
   
