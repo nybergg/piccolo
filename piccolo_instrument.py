@@ -98,7 +98,7 @@ class Instrument:
     def osc_stream(self):
         
         # Connect to the server
-        tcp_port = 5000
+        tcp_port = 5001
         
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.settimeout(5)  # Set timeout to prevent hanging
@@ -159,7 +159,7 @@ class Instrument:
 
     
 if __name__ == "__main__":
-    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing0414", verbose=True, very_verbose=True)
+    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing0424", verbose=True, very_verbose=True)
 
     input("Press Enter to initiate the deploy and run thread on Red Pitaya...")
     launch_thread   = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)

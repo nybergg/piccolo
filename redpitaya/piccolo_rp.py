@@ -21,11 +21,17 @@ class PiccoloRP:
         self.very_verbose = very_verbose
         self.stop_event = False
         self.csv_flag = True
+
+        self.fpga_inputs = {}
+        self.pending_inputs = {}
+        self.client_socket = None
+        self.acq_thread_started = False
+        
         self._map_memory()
         self._get_mmap_info()
-        self._write_defaults()
-        self.client_socket = None
-    
+        self._set_defaults()
+        
+        
     ################ Memory mapping methods ################
     def _map_memory(self):
         """Map the memory map region."""
@@ -61,51 +67,45 @@ class PiccoloRP:
         with open(json_path, "r") as f:
             mmap_json = json.load(f)
 
-        # Extract paremeter information for FADS, droplet, and sort gates
-        fads_parameters = mmap_json["fads_parameters"]
-        droplet_parameters = mmap_json["droplet_parameters"]
-        sort_gates = mmap_json["sort_gates"]
+        # Extract paremeter information for fpga inputs and outputs
+        fpga_inputs = mmap_json["fpga_inputs"]
+        fpga_outputs = mmap_json["fpga_outputs"]
 
         # Join the parameter information into a single list
         self.mmap_info = (
-            fads_parameters
-            + droplet_parameters
-            + sort_gates
+            fpga_inputs
+            + fpga_outputs
         )
 
-        # Format the mmap_info for easy read/write
+        # Store a list of variable names for FADS, droplet, and sort gates
+        self.fpga_input_names = [v["name"] for v in fpga_inputs]
+        self.fpga_ouput_names = [v["name"] for v in fpga_outputs]
+
+        # Transform the mmap_info to go from human-readable to python-interperable 
         self._expand_mmap_info()
         self._interpret_mmap_dtypes()
         
         # Create an mmap dictionary for easy lookup by variable name
         self.mmap_lookup = {var["name"]: var for var in self.mmap_info}
         
-        # Store a list of variable names for FADS, droplet, and sort gates
-        self.fads_parameter_names = [v["name"] for v in fads_parameters]
-        self.droplet_parameter_names = [v["name"] for v in droplet_parameters]
-        self.sort_gate_names = [v["name"] for v in sort_gates]
-
         # Debugging
         if self.verbose:
             print("Memory map information loaded and formatted.")
         if self.very_verbose:
             print("Created a lookup dict for mmap info with keys:")
-            for param in self.mmap_lookup:
-                print(param)
-            print("List of FADS Parameters:")
-            for param in self.fads_parameter_names:
-                print(param)
-            print("List of Droplet Parameters:")
-            for param in self.droplet_parameter_names:
-                print(param)
-            print("List of Sort Gates:")
-            for param in self.sort_gate_names:
-                print(param)
+            for var in self.mmap_lookup:
+                print(var)
+            print("List of FPGA Inputs:")
+            for var in fpga_inputs:
+                print(var)
+            print("List of FPGA Outputs:")
+            for var in fpga_outputs:
+                print(var)
 
         return None
     
     def _expand_mmap_info(self):
-        """Expand the mmap_info list to handle variables with multiple addresses."""
+        """Expand the mmap_info list to handle variables for multiple channels and addresses."""
         expanded_info = []
 
         for var in self.mmap_info:
@@ -167,13 +167,13 @@ class PiccoloRP:
         return None
     
 
-    ################ Memory read and write methods ################
-    def read_var(self, var_name):
-        """Read a memory value from the specified address."""
+    ################ Memory get and set methods ################
+    def get_var(self, var_name):
+        """Get a memory value from the specified address."""
         var_conf = self.mmap_lookup.get(var_name)
 
         if var_conf is None:
-            raise ValueError(f"Variable {var_name} not found in piccolo variables.")
+            raise ValueError(f"Variable {var_name} not found in list from piccolo_mmap.json")
 
         offset = int(var_conf["addr"], 16)
         fmt = var_conf["fmt"]
@@ -207,104 +207,82 @@ class PiccoloRP:
 
         # Debug
         if self.very_verbose:
-            print(f"Read {var_name} from memory: {val}")
+            print(f"Got {var_name} from memory: {val}")
         
         return val
     
-    def read_drop_params(self):
-        """Read droplet parameters from memory."""
+    def get_outputs(self):
+        """Get FPGA outputs from memory."""
         if self.verbose:
-            print("\n--------Reading droplet parameters from memory--------")
+            print("\n--------Getting FPGA outputs from memory--------")
         
-        droplet_parameters = {}
-        for var in self.droplet_parameter_names:
-            val = self.read_var(var)
-            droplet_parameters[var] = val
+        fpga_outputs = {}
+        for var in self.fpga_ouput_names:
+            val = self.get_var(var)
+            fpga_outputs[var] = val
 
         # Debug
         if self.verbose:
-            print("Done reading droplet parameters from memory.")
+            print("Done getting FPGA outputs from memory.")
         if self.very_verbose:
-            print("Droplet parameters read from memory:")
-            for var_name, val in droplet_parameters.items():
+            print("FPGA outputs recieved from memory:")
+            for var_name, val in fpga_outputs.items():
                 print(f"{var_name}: {val}")
 
-        self.droplet_parameters = droplet_parameters
+        self.fpga_outputs = fpga_outputs
         
         return None
     
-    def read_fads_params(self):
-        """Read FADS parameters from memory."""
+    def get_inputs(self):
+        """Get FPGA inputs from memory."""
         if self.verbose:
-            print("\n--------Reading FADS parameters from memory--------")
+            print("\n--------Getting FPGA inputs from memory--------")
 
-        fads_params = {}
-        for var in self.fads_parameter_names:
-            val = self.read_var(var)
-            fads_params[var] = val
+        fpga_inputs = {}
+        for var in self.fpga_input_names:
+            val = self.get_var(var)
+            fpga_inputs[var] = val
 
         # Debug
         if self.verbose:
-            print("Done reading FADS parameters from memory.")
+            print("Done getting FPGA inputs from memory.")
         if self.very_verbose:
-            print("FADS parameters read from memory:")
-            for var_name, val in fads_params.items():
+            print("FPGA inputs recieved from memory:")
+            for var_name, val in fpga_inputs.items():
                 print(f"{var_name}: {val}")
 
-        self.fads_params = fads_params
+        self.fpga_inputs = fpga_inputs
 
         return None
     
-    def read_sort_gates(self):
-        """Read sort gates from memory."""
+    def get_all(self):
+        """Get all FPGA variables from mmap_info."""
         if self.verbose:
-            print("\n--------Reading sort gates from memory--------")
-
-        sort_gates = {}
-        for var in self.sort_gate_names:
-            val = self.read_var(var)
-            sort_gates[var] = val
-
-        # Debug
-        if self.verbose:
-            print("Done reading sort gates from memory.")
-        if self.very_verbose:
-            print("Sort gates read from memory:")
-            for var_name, val in sort_gates.items():
-                print(f"{var_name}: {val}")
-
-        self.sort_gates = sort_gates
-
-        return None
-    
-    def read_all(self):
-        """Read all variables from mmap_info."""
-        if self.verbose:
-            print("\n--------Reading all variables from memory map--------")
+            print("\n--------Getting all FPGA variables from memory map--------")
         
-        all_values = {}
+        fpga_vars = {}
         for var in self.mmap_lookup:
-            val = self.read_var(var)
-            all_values[var] = val            
+            val = self.get_var(var)
+            fpga_vars[var] = val            
         
-        self.all_values = all_values
-
         # Debug
         if self.verbose:
             print("Done reading all variables from memory.")
         if self.very_verbose:
             print("All variables read from memory:")
-            for var_name, val in all_values.items():
+            for var_name, val in fpga_vars.items():
                 print(f"{var_name}: {val}")
+
+        self.fpga_vars = fpga_vars
         
         return None
     
-    def write_var(self, var_name, value):
-        """Write a memory value to the specified address."""
+    def set_var(self, var_name, value):
+        """Set a memory value to the specified address."""
         var_conf = self.mmap_lookup.get(var_name)
 
         if var_conf is None:
-            raise ValueError(f"Variable {var_name} not found in piccolo variables.")
+            raise ValueError(f"Variable {var_name} not found in list from piccolo_mmap.json")
 
         offset = int(var_conf["addr"], 16) 
         fmt = var_conf["fmt"]
@@ -336,46 +314,51 @@ class PiccoloRP:
 
         # Debug
         if self.verbose:
-            print(f"Wrote {var_name} to memory: {val}")
+            print(f"Set {var_name} in memory: {val}")
 
         return None
     
-    def _write_defaults(self):
-        """Write the default values to the memory."""
+
+    def _set_inputs(self):
+        """Set FPGA inputs from memory."""
+        # TODO: still need to set how the client sends these pending inputs
+        # Debug
+        if self.verbose:
+            print("\n--------Setting FPGA inputs to memory--------")
+
+        for pending_var in self.pending_inputs():
+            var = pending_var["name"]
+            val = pending_var["value"]
+            self.set_var(var, val)
+        
 
         # Debug
         if self.verbose:
-            print("\n--------Writing default values to memory--------")
+            print("Done setting FPGA input values to memory map.")
+    
+        return None
+    
+    def _set_defaults(self):
+        """Set the default values to the memory."""
+        # TODO: could imagine this being removed from RP-local in the future when the server/client handling is more robust.
+        
+        # Debug
+        if self.verbose:
+            print("\n--------Setting default values to memory--------")
 
         for var in self.mmap_lookup.values():
             var_name = var["name"]
             default_value = var.get("default")
             
             if default_value is not None:
-                self.write_var(var_name, default_value)
+                self.set_var(var_name, default_value)
 
         # Debug
         if self.verbose:
-            print("Done writing default values to memory map.")
+            print("Done setting default values to memory map.")
     
         return None
-    
-    # def _write_sort_gates(self):
-    #     """Write sort gates to memory."""
-    #     # TODO: broken method need to clean up
-    #     # Debug
-    #     if self.verbose:
-    #         print("\n--------Writing sort gates to memory--------")
 
-    #     for var in self.sort_gate_names:
-    #         val = self.sort_gates(var)
-    #         self.write_var(var, val)
-
-    #     # Debug
-    #     if self.verbose:
-    #         print("Done writing default values to memory map.")
-    
-    #     return None
     
     ################ Logging methods ################
     def _initialize_csv(self):
@@ -405,10 +388,10 @@ class PiccoloRP:
             print("\n--------Updating log values--------")
 
         # Read droplet ID from memory.
-        drop_id_preread = self.read_var("droplet_id")
-        self.read_all()
+        drop_id_preread = self.get_var("droplet_id")
+        self.get_all()
 
-        drop_id_postread = self.read_var("droplet_id")
+        drop_id_postread = self.get_var("droplet_id")
 
         if drop_id_preread != drop_id_postread:
             if self.very_verbose:
@@ -422,7 +405,7 @@ class PiccoloRP:
                 print("Writing droplet parameters to CSV file...")
             row = [timestamp_ms]
             for var in self.mmap_lookup:
-                val = self.all_values[var]
+                val = self.get_var[var]
                 row.append(val)
 
             self.csv_writer.writerow(row)
@@ -480,7 +463,7 @@ class PiccoloRP:
     
     # def _get_calibration(self, config_path):
         # """
-        # Reads calibration configuration from a JSON file and initializes calibration parameters.
+        # Gets calibration configuration from a JSON file and initializes calibration parameters.
         # """
         # with open(config_path, "r") as f:
         #     config = json.load(f)
@@ -491,7 +474,7 @@ class PiccoloRP:
         
     
     ################ Oscilliscope methods ################
-    def _get_ADC_data(self, continuous=False):
+    def _get_adc_data(self, continuous=False):
         """Read the ADC data from the memory."""    
         dec = rp.RP_DEC_64
         trig_dly = 8191
@@ -514,7 +497,7 @@ class PiccoloRP:
 
                 # Wait for trigger
                 while rp.rp_AcqGetTriggerState()[1] != rp.RP_TRIG_STATE_TRIGGERED:
-                    time.sleep(0.1)  # Avoid CPU overuse
+                    time.sleep(0.01)  # Avoid CPU overuse
 
                 # Fill state
                 while 1:
@@ -534,12 +517,7 @@ class PiccoloRP:
                 # Store the data as attribute to class
                 self.ch1_data = ch1_data
                 self.ch2_data = ch2_data
-
-                if self.client_socket is not None:
-                    self.client_socket.sendall(struct.pack(f'{N}f', *ch1_data))
-                    self.client_socket.sendall(struct.pack(f'{N}f', *ch2_data))
-
-
+                    
                 if self.verbose:
                     print("ADC data acquired successfully.")
                 if self.very_verbose:
@@ -563,44 +541,128 @@ class PiccoloRP:
     
 
     ################ Server methods ################
-    def _adc_server(self):
-        """ TCP server that streams ADC data to a connected client """
-        tcp_port = 5000
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind(('', tcp_port))
-        server_socket.listen(1)
-        print(f"TCP server listening on port {tcp_port}")
+
+    def _control_server(self, client):
+        """ TCP server that manages shutdown command from client """
+        try:
+            while True:
+                data = client.recv(16)
+                if not data:
+                    break
+                opcode = struct.unpack("I", data[:4])[0]
+                if opcode == 99:
+                    print("Shutdown signal received. Exiting.")
+                    os._exit(0)
+                else:
+                    print(f"[Control] Unknown opcode: {opcode}")
+        finally:
+            client.close()
+            print("Control server closed.")
+
+        return None
+    
+    def _adc_server(self, client):
+        """ TCP server that streams CH1 and CH2 data from ADCs """
+        # Start continuous ADC acquisition if not already started
+        if not self.acq_thread_started:
+            self.acq_thread_started = True
+            thread = threading.Thread(target=self._get_adc_data, kwargs={"continuous": True}, daemon=True)
+            thread.start()
+        
+        # Start sending data
+        try:
+            while True:
+                header = client.recv(16)
+                if not header:
+                    break
+                opcode = struct.unpack("I", header[:4])[0]
+                if opcode == 3:
+                    # send the latest available data
+                    if hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data'):
+                        combined_data = self.ch1_data + self.ch2_data
+                        client.sendall(struct.pack(f'{2*len(self.ch1_data)}f', *combined_data))
+                else:
+                    print(f"[ADC] Unknown opcode: {opcode}")
+        finally:
+            client.close()
+            print("ADC server closed.")
+
+        return None
+    
+    def _fpga_input_server(self, client):
+        """ TCP server that gets/sets fpga inputs """
+        try:
+            while True:
+                header = client.recv(16)
+                if not header:
+                    break
+                opcode = struct.unpack("I", header[:4])[0]
+
+                if opcode == 1:  # GET
+                    name_len = struct.unpack("I", client.recv(4))[0]
+                    name = client.recv(name_len).decode()
+                    val = self.get_var(name)
+                    val_bytes = str(val).encode()
+                    client.sendall(struct.pack("I", len(val_bytes)).ljust(16, b'\x00') + val_bytes)
+
+                elif opcode == 2:  # SET
+                    name_len = struct.unpack("I", client.recv(4))[0]
+                    name = client.recv(name_len).decode()
+                    value_len = struct.unpack("I", client.recv(4))[0]
+                    value = client.recv(value_len).decode()
+                    self.set_var(name, int(value))  # assumes int for now
+                    client.sendall(b'OK'.ljust(16, b'\x00'))
+
+                else:
+                    print(f"[Config] Unknown opcode: {opcode}")
+        finally:
+            client.close()
+            print("FPGA input server closed.")
+    
+    def _fpga_output_server(self, client):
+        """ TCP server that streams fpga outputs """
+        try:
+            while True:
+                self.get_outputs()
+                msg = json.dumps(self.fpga_outputs).encode()
+                length = struct.pack("I", len(msg)).ljust(16, b'\x00')
+                client.sendall(length + msg)
+                time.sleep(0.1)  # or trigger-based
+        except Exception as e:
+            print(f"[DropStream] Error: {e}")
+        finally:
+            client.close()
+            print("FPGA output server closed.")
+
+
+    def _start_server(self, port, handler):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('', port))
+        sock.listen(1)
 
         while True:
-            self.client_socket, addr = server_socket.accept()
-            print(f"Connection accepted from {addr}")
+            client, addr = sock.accept()
+            print(f"[Port {port}] Connection from {addr}")
+            thread = threading.Thread(target=handler, args=(client,), daemon=True)
+            thread.start()
 
-            try:
-                while True:
-                    header = self.client_socket.recv(16)
-                    if not header:
-                        print("Client disconnected.")
-                        break
+    def start_servers(self):
+        servers = {
+            5000: self._control_server,
+            5001: self._adc_server,
+            5002: self._fpga_input_server,
+            5003: self._fpga_output_server,
+        }
 
-                    opcode = struct.unpack("I", header[:4])[0]
+        for port, handler in servers.items():
+            thread = threading.Thread(target=self._start_server, args=(port, handler), daemon=True)
+            thread.start()
+            print(f"[Port {port}] Server started.")
 
-                    if opcode == 3:
-                        self._get_ADC_data(continuous=False)  # Stream once per command
-                    elif opcode == 99:  # Shutdown opcode
-                        print("Shutdown command received. Exiting server loop.")
-                        return
-                    else:
-                        print(f"Unknown opcode received: {opcode}")
-            except Exception as e:
-                print(f"Error in server loop: {e}")
-            finally:
-                if self.client_socket:
-                    self.client_socket.close()
-                    print("Client connection closed.")
-
-
-    
+        print("All servers running.")
+        while True:
+            time.sleep(0.01)  # keep main thread alive
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -609,34 +671,37 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     piccolo = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
-
-    # Test the memory mapping and reading/writing
-    print("--------Testing memory mapping--------")
-    piccolo.read_all()
-
-    # Test the ADC data acquisition
-    print("--------Testing ADC data acquisition--------")
-    piccolo._get_ADC_data()
-
-    # Test ADC server
-    piccolo._adc_server()
     
-    # test_var = "min_width_thresh[0]"
-    # test_val = 100
-    # print(f"Testing read/write for {test_var} with test value of {test_val}...")
-    
-    # val = rp.read_var(var_name = test_var)
-    # print(f"Read value of {val} for {test_var}")
-    # rp.write_var(var_name = test_var, value = test_val)
-    # print(f"Wrote value of {test_val} to {test_var}")
-    # val = rp.read_var(var_name = test_var)
-    # print(f"Reread value of {val} for {test_var}")
-
     # Test the logging
     # print("--------Testing logging--------")
     # rp._initialize_csv()
     # rp.start_logging()
     # print("Logging test completed.")
+
+    
+    # Test the memory mapping and reading/writing
+    print("--------Testing memory mapping--------")
+    piccolo.get_all()
+
+    # Test the ADC data acquisition
+    print("--------Testing ADC data acquisition--------")
+    piccolo._get_adc_data()
+
+    # Test servers
+    print("--------Testing servers--------")
+    piccolo.start_servers()
+
+    # test_var = "min_width_thresh[0]"
+    # test_val = 100
+    # print(f"Testing read/write for {test_var} with test value of {test_val}...")
+    
+    # val = rp.get_var(var_name = test_var)
+    # print(f"Got value of {val} for {test_var}")
+    # rp.set_var(var_name = test_var, value = test_val)
+    # print(f"Set value of {test_val} to {test_var}")
+    # val = rp.get_var(var_name = test_var)
+    # print(f"Reread value of {val} for {test_var}")
+
 
     print("\n////////// All Red Pitaya Testing Complete ///////////")
     
