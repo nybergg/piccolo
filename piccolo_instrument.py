@@ -7,6 +7,7 @@ import socket
 import struct
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 
 
 ###
@@ -28,50 +29,104 @@ class Instrument:
         
         # Local and remote script information
         self.local_script = local_script
+        self.local_dir = "redpitaya"
         self.script_args = script_args or []
         self.rp_dir = rp_dir
+
+        # Verbosity levels
         self.verbose = verbose
         self.very_verbose = very_verbose
 
+        # Get rp login information
+        self.get_rp_login()
 
-    def launch_piccolo_rp(self):
+        # Get calibration values
+        self.get_rp_calibration()
+        
+
+    def get_rp_login(self):
         """ Get the local information for the Red Pitaya and run the script on it"""
         
         # Load the Red Pitaya login information from a JSON file
-        with open("redpitaya/rp_login_vpn.json", "r") as f:
+        with open("redpitaya/rp_login_desk.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
-        username = rp_login_json["username"]
-        password = rp_login_json["password"]
+        self.username = rp_login_json["username"]
+        self.password = rp_login_json["password"]
         
         # Debug
         if self.verbose:
             print("\nRed Pitaya login information loaded successfully")
         if self.very_verbose:
             print(f"IP: {self.ip}")
-            print(f"Username: {username}")
-            print(f"Password: {password}")
+            print(f"Username: {self.username}")
+            print(f"Password: {self.password}")
+    
+    
+    def get_rp_calibration(self):
+        """SSH into the Red Pitaya and get calibration values for the ADCs"""
+        
+        # Connect to the Red Pitaya and add directory if missing
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(self.ip, username=self.username, password=self.password)
+        ssh.exec_command(f"mkdir -p {self.rp_dir}")
+
+        _, stdout, stderr = ssh.exec_command("/opt/redpitaya/bin/calib -rv")
+
+        output = stdout.read().decode()
+        errors = stderr.read().decode()
+
+        ssh.close()
+
+        if errors:
+            print("Errors:", errors)
+            return None
+
+        calib_data = {}
+        for line in output.strip().splitlines():
+            match = re.match(r"(\w+)\s*=\s*(-?\d+)", line.strip())
+            if match:
+                key, value = match.groups()
+                calib_data[key] = int(value)
+        
+        self.calib_data = calib_data
+        
+        # Debug
+        if self.verbose:
+            print("\nRed Pitaya calibration values loaded successfully")
+        if self.very_verbose:
+            print("Calibration data:", calib_data)
+
+        return None
+    
+    
+    def launch_piccolo_rp(self):
+        """ Get the local information for the Red Pitaya and run the script on it"""
 
         # Connect to the Red Pitaya and add directory if missing
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.ip, username=username, password=password)
+        ssh.connect(self.ip, username=self.username, password=self.password)
         ssh.exec_command(f"mkdir -p {self.rp_dir}")
         
         # Debug
         if self.verbose:
             print("\nConnected to Red Pitaya successfully")
         
-        # Transfer local script to the Red Pitaya
-        remote_path = os.path.join(self.rp_dir, os.path.basename(self.local_script))
+        # Transfer local directory to the Red Pitaya
         with SCPClient(ssh.get_transport()) as scp:
-            scp.put(self.local_script, remote_path)
+            for root, _, files in os.walk(self.local_dir):
+                for file in files:
+                    local_path = os.path.join(root, file)
+                    remote_path = os.path.join(self.rp_dir, file)
+                    scp.put(local_path, remote_path)
 
         # Debug
         if self.verbose:
-            print(f"\nScript transferred to {remote_path} successfully")
-            print(f"\nRunning script on Red Pitaya...")
+            print(f"\nPiccolo RP files transferred to {self.rp_dir} successfully")
+            print(f"\nRunning {self.local_script} on Red Pitaya...")
 
         # Run the script on the Red Pitaya
         args = " ".join(self.script_args)
@@ -95,7 +150,7 @@ class Instrument:
         return stdout.read(), stderr.read()
     
     
-    def osc_stream(self):
+    def get_rp_adc(self):
         
         # Connect to the server
         tcp_port = 5001
@@ -159,16 +214,13 @@ class Instrument:
 
     
 if __name__ == "__main__":
-    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing0424", verbose=True, very_verbose=True)
-
-    input("Press Enter to initiate the deploy and run thread on Red Pitaya...")
+    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing0425", verbose=True, very_verbose=True)
     launch_thread   = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
-    osc_thread      = threading.Thread(target=instrument.osc_stream, daemon=True)
+    # osc_thread      = threading.Thread(target=instrument.get_rp_adc, daemon=True)
     
     try:
         
         # Start the thread to deploy and run the script
-        input("Press Enter to deploy and run the script on Red Pitaya...")
         launch_thread.start()
         # Wait for the thread to finish
         # launch_thread.join()
@@ -176,13 +228,14 @@ if __name__ == "__main__":
         
         # Start osc server thread
         input("Press Enter to start the osc server...")
-        osc_thread.start()
+        # osc_thread.start()
         # Wait for the osc thread to finish
-        osc_thread.join()
-        print("OSC thread finished.")
+        # osc_thread.join()
+        # print("OSC thread finished.")
     except KeyboardInterrupt:
         print("Interrupted by user.")
     except socket.error as sock_err:
         print(f"Socket error: {sock_err}")
     except Exception as local_err:
         print(f"Error: {local_err}")
+

@@ -476,37 +476,29 @@ class PiccoloRP:
     ################ Oscilliscope methods ################
     def _get_adc_data(self, continuous=False):
         """Read the ADC data from the memory."""    
-        dec = rp.RP_DEC_64
-        trig_dly = 8191
+        dec = rp.RP_DEC_128
         acq_trig_sour = rp.RP_TRIG_SRC_NOW
-        N = 16384
+        N = 4096 # 16384
 
         # Initialize Red Pitaya API
         rp.rp_Init()
         rp.rp_AcqReset()
         rp.rp_AcqSetDecimation(dec)
-        rp.rp_AcqSetTriggerDelay(trig_dly)
+
+        if self.verbose:
+            print("\n--------Acquiring ADC data--------")
+        
+        
+        rp.rp_AcqSetTriggerSrc(acq_trig_sour)
     
         try:
             while True:  # Keep acquiring & streaming
-                if self.verbose:
-                    print("\n--------Acquiring ADC data--------")
-                
+                t0 = time.time()
                 rp.rp_AcqStart()
-                rp.rp_AcqSetTriggerSrc(acq_trig_sour)
-
-                # Wait for trigger
-                while rp.rp_AcqGetTriggerState()[1] != rp.RP_TRIG_STATE_TRIGGERED:
-                    time.sleep(0.01)  # Avoid CPU overuse
-
-                # Fill state
-                while 1:
-                    if rp.rp_AcqGetBufferFillState()[1]:
-                        break
-
                 # Get new data from ADC
                 ch1_buffer = rp.fBuffer(N)
                 ch2_buffer = rp.fBuffer(N)
+
                 rp.rp_AcqGetLatestDataV(rp.RP_CH_1, N, ch1_buffer)
                 rp.rp_AcqGetLatestDataV(rp.RP_CH_2, N, ch2_buffer)
 
@@ -517,11 +509,14 @@ class PiccoloRP:
                 # Store the data as attribute to class
                 self.ch1_data = ch1_data
                 self.ch2_data = ch2_data
+
+                t1 = time.time()
                     
                 if self.verbose:
                     print("ADC data acquired successfully.")
                 if self.very_verbose:
                     # print first 20 values of each channel
+                    print(f"Acquisition time: {t1 - t0:.2f} seconds")
                     print("First 20 values of ADC 1 data:", ch1_data[:20])
                     print("First 20 values of ADC 2 data:", ch2_data[:20])
 
@@ -561,7 +556,7 @@ class PiccoloRP:
 
         return None
     
-    def _adc_server(self, client):
+    def _getadc_server(self, client):
         """ TCP server that streams CH1 and CH2 data from ADCs """
         # Start continuous ADC acquisition if not already started
         if not self.acq_thread_started:
@@ -589,42 +584,12 @@ class PiccoloRP:
 
         return None
     
-    def _fpga_input_server(self, client):
-        """ TCP server that gets/sets fpga inputs """
-        try:
-            while True:
-                header = client.recv(16)
-                if not header:
-                    break
-                opcode = struct.unpack("I", header[:4])[0]
-
-                if opcode == 1:  # GET
-                    name_len = struct.unpack("I", client.recv(4))[0]
-                    name = client.recv(name_len).decode()
-                    val = self.get_var(name)
-                    val_bytes = str(val).encode()
-                    client.sendall(struct.pack("I", len(val_bytes)).ljust(16, b'\x00') + val_bytes)
-
-                elif opcode == 2:  # SET
-                    name_len = struct.unpack("I", client.recv(4))[0]
-                    name = client.recv(name_len).decode()
-                    value_len = struct.unpack("I", client.recv(4))[0]
-                    value = client.recv(value_len).decode()
-                    self.set_var(name, int(value))  # assumes int for now
-                    client.sendall(b'OK'.ljust(16, b'\x00'))
-
-                else:
-                    print(f"[Config] Unknown opcode: {opcode}")
-        finally:
-            client.close()
-            print("FPGA input server closed.")
-    
-    def _fpga_output_server(self, client):
+    def _getmem_server(self, client):
         """ TCP server that streams fpga outputs """
         try:
             while True:
-                self.get_outputs()
-                msg = json.dumps(self.fpga_outputs).encode()
+                self.get_all()
+                msg = json.dumps(self.fpga_vars).encode()
                 length = struct.pack("I", len(msg)).ljust(16, b'\x00')
                 client.sendall(length + msg)
                 time.sleep(0.1)  # or trigger-based
@@ -633,7 +598,29 @@ class PiccoloRP:
         finally:
             client.close()
             print("FPGA output server closed.")
+        
+        return None
 
+    def _setmem_server(self, client):
+        """ TCP server that gets/sets fpga inputs """
+        try:
+            while True:
+                header = client.recv(16)
+                if not header:
+                    break
+
+                name_len = struct.unpack("I", client.recv(4))[0]
+                name = client.recv(name_len).decode()
+                value_len = struct.unpack("I", client.recv(4))[0]
+                value = client.recv(value_len).decode()
+                self.set_var(name, int(value))  # assumes int for now
+                client.sendall(b'OK'.ljust(16, b'\x00'))
+
+        finally:
+            client.close()
+            print("FPGA input server closed.")
+        
+        return None
 
     def _start_server(self, port, handler):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -650,9 +637,9 @@ class PiccoloRP:
     def start_servers(self):
         servers = {
             5000: self._control_server,
-            5001: self._adc_server,
-            5002: self._fpga_input_server,
-            5003: self._fpga_output_server,
+            5001: self._getadc_server,
+            5002: self._getmem_server,
+            5003: self._setmem_server,
         }
 
         for port, handler in servers.items():
