@@ -552,40 +552,39 @@ class PiccoloRP:
                     print(f"[Control] Unknown opcode: {opcode}")
         finally:
             client.close()
-            print("Control server closed.")
+            print("Control command server closed.")
 
         return None
     
     def _getadc_server(self, client):
         """ TCP server that streams CH1 and CH2 data from ADCs """
+        
         # Start continuous ADC acquisition if not already started
         if not self.acq_thread_started:
             self.acq_thread_started = True
             thread = threading.Thread(target=self._get_adc_data, kwargs={"continuous": True}, daemon=True)
             thread.start()
         
-        # Start sending data
+        # Continuously stream ADC data to the client
         try:
             while True:
-                header = client.recv(16)
-                if not header:
-                    break
-                opcode = struct.unpack("I", header[:4])[0]
-                if opcode == 3:
-                    # send the latest available data
-                    if hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data'):
-                        combined_data = self.ch1_data + self.ch2_data
-                        client.sendall(struct.pack(f'{2*len(self.ch1_data)}f', *combined_data))
-                else:
-                    print(f"[ADC] Unknown opcode: {opcode}")
+                # send the latest available data
+                if hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data'):
+                    combined_data = self.ch1_data + self.ch2_data
+                    client.sendall(struct.pack(f'{2*len(self.ch1_data)}f', *combined_data))
+        except Exception as e:
+            print(f"[ADCStream] Error: {e}")
         finally:
             client.close()
-            print("ADC server closed.")
+            print("ADC stream server closed.")
 
         return None
     
     def _getmem_server(self, client):
         """ TCP server that streams fpga outputs """
+        
+        # Continuously stream FPGA outputs to the client
+        # TODO: consider running this in it's own thread to mirror the ADC server
         try:
             while True:
                 self.get_all()
@@ -594,10 +593,10 @@ class PiccoloRP:
                 client.sendall(length + msg)
                 time.sleep(0.1)  # or trigger-based
         except Exception as e:
-            print(f"[DropStream] Error: {e}")
+            print(f"[MemStream] Error: {e}")
         finally:
             client.close()
-            print("FPGA output server closed.")
+            print("Memory stream server closed.")
         
         return None
 
@@ -615,10 +614,11 @@ class PiccoloRP:
                 value = client.recv(value_len).decode()
                 self.set_var(name, int(value))  # assumes int for now
                 client.sendall(b'OK'.ljust(16, b'\x00'))
-
+        except Exception as e:
+            print(f"[MemSet] Error: {e}")
         finally:
             client.close()
-            print("FPGA input server closed.")
+            print("Memory set server closed.")
         
         return None
 

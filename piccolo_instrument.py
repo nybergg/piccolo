@@ -8,6 +8,15 @@ import struct
 import matplotlib.pyplot as plt
 import numpy as np
 import re
+import time
+
+# Import your clients
+from piccolo_clients import (
+    ADCStreamClient,
+    MemoryStreamClient,
+    MemoryCommandClient,
+    ControlCommandClient
+)
 
 
 ###
@@ -42,7 +51,13 @@ class Instrument:
 
         # Get calibration values
         self.get_rp_calibration()
-        
+
+        # Setup clients
+        self.setup_clients()
+
+
+
+    ################ Red Pitaya Setup and Run Methods ################
 
     def get_rp_login(self):
         """ Get the local information for the Red Pitaya and run the script on it"""
@@ -149,93 +164,125 @@ class Instrument:
 
         return stdout.read(), stderr.read()
     
-    
-    def get_rp_adc(self):
-        
-        # Connect to the server
-        tcp_port = 5001
-        
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.settimeout(5)  # Set timeout to prevent hanging
-        client_socket.connect((self.ip, tcp_port))
-        print("Connected to server.")
 
-        # Send stream command
-        message = struct.pack("I", 3).ljust(16, b'\x00')
+
+    ################ Red Pitaya Client Methods ################
+
+    def setup_clients(self):
+        """Initialize but don't start clients yet."""
+        self.stream_clients = {
+            "adc": ADCStreamClient(),
+            "memory": MemoryStreamClient()
+        }
+        self.memory_command_client = MemoryCommandClient()
+        self.control_client = ControlCommandClient()
+        
+
+    def start_clients(self):
+        """Start all Red Pitaya clients."""
+        for name, client in self.stream_clients.items():
+            client.start(self.ip)
+            print(f"[Instrument] {name} client started.")
+
+        self.memory_command_client.start(self.ip)
+        print("[Instrument] Memory command client started.")
+
+
+    def stop_clients(self):
+        """Stop all clients."""
+        for client in self.stream_clients.values():
+            client.stop()
+        self.memory_command_client.stop()
+        print("[Instrument] All clients stopped.")
+
+
+    def set_memory_variable(self, variable, value):
+        """Set FPGA memory variable."""
+        self.memory_command_client.send_set_command(variable, value)
+        print(f"[Instrument] Queued memory variable set: {variable} = {value}")
+
+
+    def kill_servers(self):
+        """Send kill command to Red Pitaya."""
+        self.control_client.start(self.ip)
+        time.sleep(1)  # Give time for kill to be sent
+        self.control_client.stop()
+        print("[Instrument] Kill command sent.")
+    
+
+
+if __name__ == "__main__":
+    instrument = Instrument(
+        local_script="redpitaya/piccolo_rp.py",
+        script_args=["--verbose", "--very_verbose"],
+        rp_dir="piccolo_testing0425",
+        verbose=True,
+        very_verbose=True
+    )
+
+    try:
+        launch_thread   = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
+
+        launch_thread.start()
+        print("\nLaunching Piccolo RP server...")
+
+        time.sleep(10)  # Give time for the server to start
+        
+        # Start cliend threads
+        input("\nPress Enter to start the client threads...")
+        # Start streaming clients
+        instrument.start_clients()
+
+
+        ############ TESTING ADC STREAM CLIENT ############
+
+        print("\n[Test] ADC Stream Client started.")
+
+        for _ in range(10):  # ~1 second if 0.1s stream interval
+            time.sleep(0.1)
+            with instrument.stream_clients["adc"].lock:
+                if instrument.stream_clients["adc"].latest_data:
+                    print("[Test] Received ADC data block.")
+                    ch1 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[:16384*4]))
+                    ch2 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[16384*4:]))
+                    print(f"Ch1 Mean: {np.mean(ch1):.4f}, Ch2 Mean: {np.mean(ch2):.4f}")
+                else:
+                    print("[Test] No data yet.")
+
+
+        ############ TESTING MEM STREAM CLIENT ############
+        
+        print("\n[Test] Memory Stream Client started.")
+        
+        for _ in range(10):
+            time.sleep(0.1)
+            with instrument.stream_clients["memory"].lock:
+                if instrument.stream_clients["memory"].latest_data:
+                    outputs = json.loads(instrument.stream_clients["memory"].latest_data.decode())
+                    print("[Test] Received Memory Data:", outputs)
+                else:
+                    print("[Test] No memory data yet.")
+
+        
+        ############ TESTING MEMORY COMMAND CLIENT ############
+        print("\n[Test] Memory Command Client started.")
 
         try:
-            while True:
-                client_socket.sendall(message)
-                print("Stream command sent.")
+            # Send a test variable update
+            instrument.send_set_command("low_intensity_thresh[0]", 1234)
+            print("[Test] Queued memory variable set.")
 
-                # Receive data for both channels
-                ch1_data = receive_data(client_socket)
-                ch2_data = receive_data(client_socket)
-
-                if ch1_data is None or ch2_data is None:
-                    print("Connection lost. Exiting.")
-                    break
-
-                # Convert received binary data to float arrays
-                self.ch1_data = np.array(struct.unpack(f'{16384}f', ch1_data))
-                self.ch2_data = np.array(struct.unpack(f'{16384}f', ch2_data))
-
-        except KeyboardInterrupt:
-            print("Interrupted by user.")
+            # Give it time to send
+            time.sleep(1)
 
         finally:
-            client_socket.close()
+            print("[Test] Memory Command Client stopped.")
+            instrument.stop_clients()
 
 
-        def receive_data(client_socket):
-            expected_bytes = 16384 * 4  # 16384 floats, each 4 bytes
-
-            """Receives a fixed amount of data from the socket."""
-            data = b''
-            while len(data) < expected_bytes:
-                try:
-                    packet = client_socket.recv(expected_bytes - len(data))
-                    if not packet:
-                        print("Connection closed by server.")
-                        return None  # Connection closed
-                    data += packet
-                except socket.timeout:
-                    print("Socket timeout, retrying...")
-                    continue
-                except Exception as e:
-                    print(f"Receive error: {e}")
-                    return None
-            return data
-    
-        return None
-        
-
-
-
-    
-if __name__ == "__main__":
-    instrument = Instrument(local_script="redpitaya/piccolo_rp.py", script_args=["--verbose", "--very_verbose"], rp_dir="piccolo_testing0425", verbose=True, very_verbose=True)
-    launch_thread   = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
-    # osc_thread      = threading.Thread(target=instrument.get_rp_adc, daemon=True)
-    
-    try:
-        
-        # Start the thread to deploy and run the script
-        launch_thread.start()
-        # Wait for the thread to finish
-        # launch_thread.join()
-        print("Launch thread in process...")
-        
-        # Start osc server thread
-        input("Press Enter to start the osc server...")
-        # osc_thread.start()
-        # Wait for the osc thread to finish
-        # osc_thread.join()
-        # print("OSC thread finished.")
     except KeyboardInterrupt:
         print("Interrupted by user.")
     except socket.error as sock_err:
         print(f"Socket error: {sock_err}")
     except Exception as local_err:
         print(f"Error: {local_err}")
-
