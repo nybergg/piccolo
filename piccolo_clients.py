@@ -2,6 +2,7 @@ import socket
 import struct
 import threading
 import time
+import json
 
 def recv_data(sock, size):
     """Helper function to receive correct 'size' bytes."""
@@ -67,10 +68,10 @@ class ADCStreamClient(BaseClient):
         self.lock = threading.Lock()
 
     def _run(self):
-        message = struct.pack("I", 3).ljust(16, b'\x00')
+        # message = struct.pack("I", 3).ljust(16, b'\x00')
         try:
             while not self.stop_flag.is_set():
-                self.sock.sendall(message)
+                # self.sock.sendall(message)
                 data = recv_data(self.sock, 2 * 16384 * 4)
                 if data:
                     with self.lock:
@@ -124,22 +125,12 @@ class MemoryCommandClient(BaseClient):
                     if self.command_queue:
                         variable, value = self.command_queue.pop(0)
 
-                        # Encode name
-                        name_bytes = variable.encode()
-                        name_len = struct.pack("I", len(name_bytes))
-
-                        # Encode value
-                        value_bytes = value.encode()
-                        value_len = struct.pack("I", len(value_bytes))
-
-                        # Send format: name_len + name + value_len + value
-                        self.sock.sendall(name_len)
-                        self.sock.sendall(name_bytes)
-                        self.sock.sendall(value_len)
-                        self.sock.sendall(value_bytes)
+                        message = json.dumps({"name": variable, "value": value}).encode()
+                        header = struct.pack("I", len(message)).ljust(16, b'\x00')
+                        self.sock.sendall(header + message)
 
                         print(f"[MemoryCommandClient] Sent: {variable} = {value}")
-            time.sleep(0.1)
+                time.sleep(0.1)
         except Exception as e:
             print(f"[MemoryCommandClient] Error during _run: {e}")
         finally:

@@ -318,26 +318,6 @@ class PiccoloRP:
 
         return None
     
-
-    def _set_inputs(self):
-        """Set FPGA inputs from memory."""
-        # TODO: still need to set how the client sends these pending inputs
-        # Debug
-        if self.verbose:
-            print("\n--------Setting FPGA inputs to memory--------")
-
-        for pending_var in self.pending_inputs():
-            var = pending_var["name"]
-            val = pending_var["value"]
-            self.set_var(var, val)
-        
-
-        # Debug
-        if self.verbose:
-            print("Done setting FPGA input values to memory map.")
-    
-        return None
-    
     def _set_defaults(self):
         """Set the default values to the memory."""
         # TODO: could imagine this being removed from RP-local in the future when the server/client handling is more robust.
@@ -608,12 +588,13 @@ class PiccoloRP:
                 if not header:
                     break
 
-                name_len = struct.unpack("I", client.recv(4))[0]
-                name = client.recv(name_len).decode()
-                value_len = struct.unpack("I", client.recv(4))[0]
-                value = client.recv(value_len).decode()
-                self.set_var(name, int(value))  # assumes int for now
-                client.sendall(b'OK'.ljust(16, b'\x00'))
+                msg_len = struct.unpack("I", header[:4])[0]
+                msg = client.recv(msg_len)
+                data = json.loads(msg.decode())
+                var_name = data["name"]
+                value = data["value"]
+                
+                self.set_var(var_name=var_name, value=value)  
         except Exception as e:
             print(f"[MemSet] Error: {e}")
         finally:
@@ -661,8 +642,8 @@ if __name__ == "__main__":
     
     # Test the logging
     # print("--------Testing logging--------")
-    # rp._initialize_csv()
-    # rp.start_logging()
+    # piccolo._initialize_csv()
+    # piccolo.start_logging()
     # print("Logging test completed.")
 
     
@@ -674,21 +655,29 @@ if __name__ == "__main__":
     print("--------Testing ADC data acquisition--------")
     piccolo._get_adc_data()
 
+    # Test the memory mapping and reading/writing
+    print("--------Testing get/set--------")
+    test_var = "min_width_thresh[0]"
+    test_val = 200
+    print(f"Testing get/set for {test_var} with test value of {test_val}...")
+    
+    val = piccolo.get_var(var_name = test_var)
+    print(f"Got value of {val} for {test_var}")
+    piccolo.set_var(var_name = test_var, value = test_val)
+    print(f"Set value of {test_val} to {test_var}")
+    val = piccolo.get_var(var_name = test_var)
+    print(f"Reread value of {val} for {test_var}")
+
+    # Reset variables back to defaults
+    piccolo._set_defaults()
+    piccolo.get_all()
+    print("Reset variables to defaults")
+
+    print("\n////////// All Red Pitaya Testing Complete ///////////")
+
     # Test servers
     print("--------Testing servers--------")
     piccolo.start_servers()
 
-    # test_var = "min_width_thresh[0]"
-    # test_val = 100
-    # print(f"Testing read/write for {test_var} with test value of {test_val}...")
     
-    # val = rp.get_var(var_name = test_var)
-    # print(f"Got value of {val} for {test_var}")
-    # rp.set_var(var_name = test_var, value = test_val)
-    # print(f"Set value of {test_val} to {test_var}")
-    # val = rp.get_var(var_name = test_var)
-    # print(f"Reread value of {val} for {test_var}")
-
-
-    print("\n////////// All Red Pitaya Testing Complete ///////////")
     
