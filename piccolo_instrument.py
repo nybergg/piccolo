@@ -41,6 +41,7 @@ class Instrument:
         self.local_dir = "redpitaya"
         self.script_args = script_args or []
         self.rp_dir = rp_dir
+        self.rp_output = []  
 
         # Verbosity levels
         self.verbose = verbose
@@ -51,7 +52,7 @@ class Instrument:
 
         # Get calibration values
         self.get_rp_calibration()
-
+        
         # Setup clients
         self.setup_clients()
 
@@ -149,13 +150,15 @@ class Instrument:
         cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {script} {args}"'
         _, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
 
+        # Read output in real-time
+        for line in iter(stdout.readline, ""):
+            if not line:
+                break
+            self.rp_output.append(line.strip())
+            # if self.very_verbose:
+            #     print(f"[RP stdout] {line.strip()}")
+        
         # Debug            
-        if self.very_verbose:
-            stdout_str = stdout.read().decode()
-            print("\n///////////Output on Red Pitaya///////////")
-            print(stdout_str)
-            print("\n///////////End of Red Pitaya Output///////////")
-
         if self.verbose:
             print("\nScript executed successfully. Shell to Red Pitaya closed")
         
@@ -221,33 +224,35 @@ if __name__ == "__main__":
     )
 
     try:
-        launch_thread   = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
+        
+        ############ LAUNCHING PICCOLO ON RED PITAYA ############
+
+        launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
 
         launch_thread.start()
         print("\nLaunching Piccolo RP server...")
 
         time.sleep(10)  # Give time for the server to start
-        
-        # Start cliend threads
-        input("\nPress Enter to start the client threads...")
-        # Start streaming clients
+
+        # # Start cliend threads
+        # # input("\nPress Enter to start the client threads...")
+        # # Start streaming clients
         instrument.start_clients()
 
+        time.sleep(1)  # Give time for the clients to start
+        # ############ TESTING ADC STREAM CLIENT ############
 
-        ############ TESTING ADC STREAM CLIENT ############
+        # print("\n[Test] ADC Stream Client started.")
 
-        print("\n[Test] ADC Stream Client started.")
-
-        for _ in range(10):  # ~1 second if 0.1s stream interval
-            time.sleep(0.1)
-            with instrument.stream_clients["adc"].lock:
-                if instrument.stream_clients["adc"].latest_data:
-                    print("[Test] Received ADC data block.")
-                    ch1 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[:16384*4]))
-                    ch2 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[16384*4:]))
-                    print(f"Ch1 Mean: {np.mean(ch1):.4f}, Ch2 Mean: {np.mean(ch2):.4f}")
-                else:
-                    print("[Test] No data yet.")
+        # for _ in range(10):  # ~1 second if 0.1s stream interval
+        #     time.sleep(0.1)
+        #     if instrument.stream_clients["adc"].latest_data:
+        #         print("[Test] Received ADC data block.")
+        #         ch1 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[:16384*4]))
+        #         ch2 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[16384*4:]))
+        #         print(f"Ch1 Mean: {np.mean(ch1):.4f}, Ch2 Mean: {np.mean(ch2):.4f}")
+        #     else:
+        #         print("[Test] No data yet.")
 
 
         ############ TESTING MEM STREAM CLIENT ############
@@ -256,12 +261,11 @@ if __name__ == "__main__":
         
         for _ in range(10):
             time.sleep(0.1)
-            with instrument.stream_clients["memory"].lock:
-                if instrument.stream_clients["memory"].latest_data:
-                    outputs = json.loads(instrument.stream_clients["memory"].latest_data.decode())
-                    print("[Test] Received Memory Data:", outputs)
-                else:
-                    print("[Test] No memory data yet.")
+            if instrument.stream_clients["memory"].latest_data:
+                outputs = json.loads(instrument.stream_clients["memory"].latest_data.decode())
+                print("[Test] Received Memory Data:", outputs)
+            else:
+                print("[Test] No memory data yet.")
 
         
         ############ TESTING MEMORY COMMAND CLIENT ############
@@ -269,8 +273,17 @@ if __name__ == "__main__":
 
         try:
             # Send a test variable update
-            instrument.send_set_command("low_intensity_thresh[0]", 1234)
-            print("[Test] Queued memory variable set.")
+            instrument.set_memory_variable("low_intensity_thresh[0]", 1234)
+            print("[Test] Set low_intensity_thresh[0] to 1234")
+            time.sleep(0.5)  # Give time for the command to be sent
+
+            for _ in range(3):
+                time.sleep(0.1)
+                if instrument.stream_clients["memory"].latest_data:
+                    outputs = json.loads(instrument.stream_clients["memory"].latest_data.decode())
+                    print("[Test] Received Memory Data:", outputs)
+                else:
+                    print("[Test] No memory data yet.")
 
             # Give it time to send
             time.sleep(1)
@@ -279,6 +292,14 @@ if __name__ == "__main__":
             print("[Test] Memory Command Client stopped.")
             instrument.stop_clients()
 
+        time.sleep(1)  # Give time for the clients to stop
+
+
+        # print("\n/////////// Final Red Pitaya Output ///////////")
+        # for line in instrument.rp_output:
+        #     print(line)
+        # print("/////////// End Red Pitaya Output ///////////")
+        
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
