@@ -4,13 +4,12 @@ import paramiko
 from scp import SCPClient
 import threading
 import socket
-import struct
-import matplotlib.pyplot as plt
 import numpy as np
 import re
 import time
+import posixpath
 
-# Import your clients
+# Import piccolo clients
 from piccolo_clients import (
     ADCStreamClient,
     MemoryStreamClient,
@@ -29,7 +28,8 @@ from piccolo_clients import (
 
 class Instrument:
     def __init__(self, 
-                 local_script, 
+                 local_script="piccolo_rp.py",
+                 local_dir="redpitaya", 
                  script_args=None, 
                  rp_dir="piccolo_testing",
                  verbose=True,
@@ -38,7 +38,7 @@ class Instrument:
         
         # Local and remote script information
         self.local_script = local_script
-        self.local_dir = "redpitaya"
+        self.local_dir = local_dir
         self.script_args = script_args or []
         self.rp_dir = rp_dir
         self.rp_output = []  
@@ -136,8 +136,11 @@ class Instrument:
             for root, _, files in os.walk(self.local_dir):
                 for file in files:
                     local_path = os.path.join(root, file)
-                    remote_path = os.path.join(self.rp_dir, file)
+                    remote_path = posixpath.join(self.rp_dir, file)  # Remote: needs Linux-style slashes
                     scp.put(local_path, remote_path)
+
+                    if self.very_verbose:
+                        print(f"Local file {local_path} transferred to Red Pitaya {remote_path}")
 
         # Debug
         if self.verbose:
@@ -146,21 +149,31 @@ class Instrument:
 
         # Run the script on the Red Pitaya
         args = " ".join(self.script_args)
-        script = os.path.basename(remote_path)
-        cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {script} {args}"'
+        cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {self.local_script} {args}"'
         _, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
 
-        # Read output in real-time
-        for line in iter(stdout.readline, ""):
-            if not line:
-                break
-            self.rp_output.append(line.strip())
-            # if self.very_verbose:
-            #     print(f"[RP stdout] {line.strip()}")
-        
-        # Debug            
+        # Read stdout in real-time
+        try:
+            for line in iter(stdout.readline, ""):
+                line = line.strip()
+                if line:
+                    self.rp_output.append(line)
+                    if self.very_verbose:
+                        print(f"[RP stdout] {line}")
+        except Exception as e:
+            print(f"[Paramiko stdout read error] {e}")
+
+        # Ensure command completed
+        _ = stdout.channel.recv_exit_status()
+
+        # Capture any final stderr output
+        stderr_output = stderr.read().decode().strip()
+        if stderr_output:
+            print(f"[RP stderr] {stderr_output}")
+
+        # Debug
         if self.verbose:
-            print("\nScript executed successfully. Shell to Red Pitaya closed")
+            print("\nScript executed. SSH channel closed.")
         
         # Close connection to Red Pitaya
         ssh.close()
@@ -211,22 +224,44 @@ class Instrument:
         time.sleep(1)  # Give time for kill to be sent
         self.control_client.stop()
         print("[Instrument] Kill command sent.")
+
     
+    ################ Run Piccolo Instrument ################
+    def run(self):
+        print("\n-----------Running Piccolo Instrument-----------")
+        ############ LAUNCHING PICCOLO ON RED PITAYA ############
+
+        print("\n-----------Launching Red Pitaya Methods-----------")
+        launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
+        launch_thread.start()
+        print("\nLaunching Piccolo RP server...")
+
+        time.sleep(10)  # Give time for the server to start
+
+        # Start cliend threads
+        print("\n-----------Launching PC Methods-----------")
+        # Start streaming clients
+        instrument.start_clients()
+
+        print("\n-----------Running Red Pitaya & PC Methods-----------")
+
+
+
 
 
 if __name__ == "__main__":
     instrument = Instrument(
-        local_script="redpitaya/piccolo_rp.py",
+        local_script="piccolo_rp.py",
+        local_dir="redpitaya",
         script_args=["--verbose", "--very_verbose"],
-        rp_dir="piccolo_testing0425",
-        verbose=True,
-        very_verbose=True
+        rp_dir="piccolo_testing0430",
+        verbose=False,
+        very_verbose=False
     )
 
     try:
         
         ############ LAUNCHING PICCOLO ON RED PITAYA ############
-
         launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
 
         launch_thread.start()
@@ -234,36 +269,37 @@ if __name__ == "__main__":
 
         time.sleep(10)  # Give time for the server to start
 
-        # # Start cliend threads
-        # # input("\nPress Enter to start the client threads...")
-        # # Start streaming clients
+        # Start cliend threads
+        input("\nPress Enter to start the client threads...")
+        # Start streaming clients
         instrument.start_clients()
 
         time.sleep(1)  # Give time for the clients to start
-        # ############ TESTING ADC STREAM CLIENT ############
+        
+        
+        ############ TESTING ADC STREAM CLIENT ############
+        print("\n[Test] ADC Stream Client started.")
 
-        # print("\n[Test] ADC Stream Client started.")
+        for _ in range(10):  # ~1 second if 0.1s stream interval
+            time.sleep(0.1)
+            if instrument.stream_clients["adc"].latest_data:
+                print("[Test] Received ADC data block.")
+                ch1 = instrument.stream_clients["adc"].adc1_data
+                ch2 = instrument.stream_clients["adc"].adc2_data
 
-        # for _ in range(10):  # ~1 second if 0.1s stream interval
-        #     time.sleep(0.1)
-        #     if instrument.stream_clients["adc"].latest_data:
-        #         print("[Test] Received ADC data block.")
-        #         ch1 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[:16384*4]))
-        #         ch2 = np.array(struct.unpack('16384f', instrument.stream_clients["adc"].latest_data[16384*4:]))
-        #         print(f"Ch1 Mean: {np.mean(ch1):.4f}, Ch2 Mean: {np.mean(ch2):.4f}")
-        #     else:
-        #         print("[Test] No data yet.")
+                print(f"Ch1 Mean: {np.mean(ch1):.4f}, Ch2 Mean: {np.mean(ch2):.4f}")
+            else:
+                print("[Test] No data yet.")
 
 
         ############ TESTING MEM STREAM CLIENT ############
-        
         print("\n[Test] Memory Stream Client started.")
         
         for _ in range(10):
             time.sleep(0.1)
             if instrument.stream_clients["memory"].latest_data:
-                outputs = json.loads(instrument.stream_clients["memory"].latest_data.decode())
-                print("[Test] Received Memory Data:", outputs)
+                fpgaoutput = instrument.stream_clients["memory"].fpgaoutput
+                print("[Test] Received Memory Data:", fpgaoutput)
             else:
                 print("[Test] No memory data yet.")
 
@@ -271,34 +307,29 @@ if __name__ == "__main__":
         ############ TESTING MEMORY COMMAND CLIENT ############
         print("\n[Test] Memory Command Client started.")
 
+        var_name = "low_intensity_thresh[0]"
+        var_value = 1234
+        
+
         try:
+            # Read initial value
+            fpgaoutput = instrument.stream_clients["memory"].fpgaoutput
+            print(f"[Test] Initial Memory Value for {var_name}: {fpgaoutput[var_name]}")
+            
             # Send a test variable update
-            instrument.set_memory_variable("low_intensity_thresh[0]", 1234)
-            print("[Test] Set low_intensity_thresh[0] to 1234")
+            instrument.set_memory_variable(var_name, var_value)
+            print("[Test] Set {var_value} to {var_value}")
             time.sleep(0.5)  # Give time for the command to be sent
 
-            for _ in range(3):
-                time.sleep(0.1)
-                if instrument.stream_clients["memory"].latest_data:
-                    outputs = json.loads(instrument.stream_clients["memory"].latest_data.decode())
-                    print("[Test] Received Memory Data:", outputs)
-                else:
-                    print("[Test] No memory data yet.")
-
-            # Give it time to send
-            time.sleep(1)
+            # Read updated value
+            fpgaoutput = instrument.stream_clients["memory"].fpgaoutput
+            print(f"[Test] Updated Memory Value for {var_name}: {fpgaoutput[var_name]}")
 
         finally:
             print("[Test] Memory Command Client stopped.")
             instrument.stop_clients()
 
         time.sleep(1)  # Give time for the clients to stop
-
-
-        # print("\n/////////// Final Red Pitaya Output ///////////")
-        # for line in instrument.rp_output:
-        #     print(line)
-        # print("/////////// End Red Pitaya Output ///////////")
         
 
     except KeyboardInterrupt:
@@ -307,3 +338,4 @@ if __name__ == "__main__":
         print(f"Socket error: {sock_err}")
     except Exception as local_err:
         print(f"Error: {local_err}")
+
