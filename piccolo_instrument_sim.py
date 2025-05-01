@@ -39,9 +39,9 @@ class DataGenerator:
             0, self.signal_duration_ms, self.drop_interval_ms)
         self.set_threshold(0.03)
         self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
-        self.pmt_gain = np.zeros(num_channels)
+        self.sipm_gain = np.zeros(num_channels)
         for ch in range(num_channels):
-            self.set_pmt_gain(ch, 0.5)
+            self.set_sipm_gain(ch, 0.5)
         self.data2d = {"x": [0], "y": [0], "density": [0]}
         self._running = False
         if self.verbose:
@@ -75,7 +75,7 @@ class DataGenerator:
                                               scale=self.signal_baseline_cv,
                                               size=len(self.time_ms))            
             # Combine signals for this channel:
-            self.signal[ch] = (signal + baseline_noise) * self.pmt_gain[ch]
+            self.signal[ch] = (signal + baseline_noise) * self.sipm_gain[ch]
         if self.very_verbose:
             print("\n%s: -> done generating signal"%self.name)            
         return None
@@ -83,7 +83,7 @@ class DataGenerator:
     def _analyze_drops(self, ch=1):
         if self.very_verbose:
             print("\n%s: analyzing drops"%self.name)
-        # Analyze Drop Parameters from PMT Signals:
+        # Analyze Drop Parameters from sipm Signals:
         # Find drops based on the signal and threshold of the specified channel:
         drops, _ = find_peaks(self.signal[ch], height=self.threshold)
         if np.any(drops) == False:
@@ -186,10 +186,10 @@ class DataGenerator:
         self.gate_limits = limits
         return None
 
-    def set_pmt_gain(self, ch, gain):
+    def set_sipm_gain(self, ch, gain):
         if self.verbose:
-            print("%s(ch%s): setting pmt gain = %s"%(self.name, ch, gain))
-        self.pmt_gain[ch] = gain
+            print("%s(ch%s): setting sipm gain = %s"%(self.name, ch, gain))
+        self.sipm_gain[ch] = gain
         return None
 
     def start_generating(self):

@@ -68,9 +68,9 @@ class UI:
             # Pull data from subprocess and update the datasource and plot:
             with self.dg_lock:
                 # Update pmt data:
-                self.source_PMT0.data = {'x':self.dg.time_ms,
+                self.sipm0.data = {'x':self.dg.time_ms,
                                          'y':self.dg.signal[0]}
-                self.source_PMT1.data = {'x':self.dg.time_ms,
+                self.sipm1.data = {'x':self.dg.time_ms,
                                          'y':self.dg.signal[1]}
                 for key in self.rolling_source_2d:
                     self.rolling_source_2d[key].extend(self.dg.data2d[key])
@@ -101,9 +101,9 @@ class UI:
 
     def _setup_data_sources(self):
         # Initialize data sources for the generated data (s to ms):
-        self.source_PMT0 = ColumnDataSource(data={'x':self.dg.time_ms,
+        self.sipm0 = ColumnDataSource(data={'x':self.dg.time_ms,
                                                   'y':self.dg.signal[0]})
-        self.source_PMT1 = ColumnDataSource(data={'x':self.dg.time_ms,
+        self.sipm1 = ColumnDataSource(data={'x':self.dg.time_ms,
                                                   'y':self.dg.signal[1]})
         self.source_2d = ColumnDataSource(data=self.dg.data2d)
         self.rolling_source_2d = self.dg.data2d.copy()
@@ -164,11 +164,11 @@ class UI:
     def _create_sliders(self):
         def _gain0_changed(attr, old, new):
             with self.dg_lock:
-                self.dg.set_pmt_gain(0, new)
+                self.dg.set_sipm_gain(0, new)
             return None
         def _gain1_changed(attr, old, new):
             with self.dg_lock:
-                self.dg.set_pmt_gain(1, new)
+                self.dg.set_sipm_gain(1, new)
             return None
         def _threshold_changed(attr, old, new):
             with self.dg_lock:
@@ -182,7 +182,7 @@ class UI:
                 "end": 1,
                 "value": 0.5,
                 "step": 0.01,
-                "title": "PMT 0 Gain",
+                "title": "SiPM 0 Gain",
                 "bar_color": "mediumseagreen",
                 "callback": _gain0_changed,
             },
@@ -191,7 +191,7 @@ class UI:
                 "end": 1,
                 "value": 0.5,
                 "step": 0.01,
-                "title": "PMT 1 Gain",
+                "title": "SiPM 1 Gain",
                 "bar_color": "royalblue",
                 "callback": _gain1_changed,
             },
@@ -200,7 +200,7 @@ class UI:
                 "end": 2,
                 "value": self.thresh,
                 "step": 0.01,
-                "title": "PMT 0 Threshold",
+                "title": "SiPM 0 Threshold",
                 "bar_color": "mediumseagreen",
                 "callback": _threshold_changed,
             },
@@ -317,7 +317,7 @@ class UI:
         self.plot = figure(
             height=300,
             width=900,
-            title="Generated PMT Data",
+            title="Generated SiPM Data",
             x_axis_label="Time(ms)",
             y_axis_label="Voltage",
             toolbar_location=None,
@@ -328,16 +328,16 @@ class UI:
         self.plot.line(
             "x",
             "y",
-            source=self.source_PMT0,
+            source=self.sipm0,
             color="mediumseagreen",
-            legend_label="PMT0",
+            legend_label="SiPM0",
             )
         self.plot.line(
             "x",
             "y",
-            source=self.source_PMT1,
+            source=self.sipm1,
             color="royalblue",
-            legend_label="PMT1"
+            legend_label="SiPM1"
             )
         # create threshold lines:
         self.thresh_line = Span(
