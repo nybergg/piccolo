@@ -390,7 +390,7 @@ if __name__ == '__main__':
     bk_app = {'/': Application(FunctionHandler(func))} # doc created here
     server = Server(
         bk_app,
-        port=5000, # default 5006
+        port=5001, # default 5006
         # check session status sooner (.on_session_destroyed callback)
         check_unused_sessions_milliseconds=500,     # default 17000
         unused_session_lifetime_milliseconds=500)   # default 15000
