@@ -1,0 +1,14 @@
+#-----------------------------------------------------------
+# Vivado v2020.1 (64-bit)
+# SW Build 2902540 on Wed May 27 19:54:49 MDT 2020
+# IP Build 2902112 on Wed May 27 22:43:36 MDT 2020
+# Start of session at: Tue Feb 25 13:29:03 2025
+# Process ID: 5260
+# Current directory: C:/Github/piccolo-fullstack/fpga/project
+# Command line: vivado.exe -gui_launcher_event rodinguilauncherevent11932 C:\Github\piccolo-fullstack\fpga\project\redpitaya.xpr
+# Log file: C:/Github/piccolo-fullstack/fpga/project/vivado.log
+# Journal file: C:/Github/piccolo-fullstack/fpga/project\vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project C:/Github/piccolo-fullstack/fpga/project/redpitaya.xpr
+update_compile_order -fileset sources_1
