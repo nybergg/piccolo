@@ -7,7 +7,7 @@ from scipy.integrate import simpson
 from scipy.signal import find_peaks, peak_widths
 from scipy.stats import gaussian_kde
 
-class DataGenerator:
+class InstrumentSim:
     def __init__(self,
                  num_channels=2,
                  signal_duration_ms=100,
@@ -210,7 +210,7 @@ class DataGenerator:
 
 if __name__ == "__main__":
     import time
-    dg = DataGenerator(verbose=True, very_verbose=True)
+    dg = InstrumentSim(verbose=True, very_verbose=True)
     dg.start_generating()
     time.sleep(0.5) # run for a bit
     input('\nhit enter to continue')

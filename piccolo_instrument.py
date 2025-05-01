@@ -33,7 +33,8 @@ class Instrument:
                  script_args=None, 
                  rp_dir="piccolo_testing",
                  verbose=True,
-                 very_verbose=True 
+                 very_verbose=True,
+                 debug_flag=False 
                  ):
         
         # Local and remote script information
@@ -43,9 +44,10 @@ class Instrument:
         self.rp_dir = rp_dir
         self.rp_output = []  
 
-        # Verbosity levels
+        # Verbosity levels and debug flag
         self.verbose = verbose
         self.very_verbose = very_verbose
+        self.debug_flag = debug_flag
 
         # Get rp login information
         self.get_rp_login()
@@ -144,42 +146,55 @@ class Instrument:
 
         # Debug
         if self.verbose:
-            print(f"\nPiccolo RP files transferred to {self.rp_dir} successfully")
-            print(f"\nRunning {self.local_script} on Red Pitaya...")
+            print(f"\nFiles transferred to Red Pitaya.")
+        
+        if not self.debug_flag:
+            # Construct command for background piccolo_rp.py process with logging
+            args = " ".join(self.script_args)
+            cmd = (
+                f'cd {self.rp_dir} && '
+                f'nohup sudo python3 {self.local_script} {args} '
+                f'> piccolo_stdout.log 2> piccolo_stderr.log < /dev/null &'
+            )
 
-        # Run the script on the Red Pitaya
-        args = " ".join(self.script_args)
-        cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {self.local_script} {args}"'
-        _, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
+            # Launch in background
+            ssh.exec_command(f'bash -c "{cmd}"')
 
-        # Read stdout in real-time
-        try:
-            for line in iter(stdout.readline, ""):
-                line = line.strip()
-                if line:
-                    self.rp_output.append(line)
-                    if self.very_verbose:
-                        print(f"[RP stdout] {line}")
-        except Exception as e:
-            print(f"[Paramiko stdout read error] {e}")
+            if self.verbose:
+                print("\nScript launched in background. Use log files to monitor.")
 
-        # Ensure command completed
-        _ = stdout.channel.recv_exit_status()
+        else:
+            # Construct command for foreground piccolo_rp.py process for debugging
+            args = " ".join(self.script_args)
+            cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {self.local_script} {args}"'
+            _, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
 
-        # Capture any final stderr output
-        stderr_output = stderr.read().decode().strip()
-        if stderr_output:
-            print(f"[RP stderr] {stderr_output}")
+            # Read stdout in real-time
+            try:
+                for line in iter(stdout.readline, ""):
+                    line = line.strip()
+                    if line:
+                        self.rp_output.append(line)
+                        if self.very_verbose:
+                            print(f"[RP stdout] {line}")
+            except Exception as e:
+                print(f"[Paramiko stdout read error] {e}")
 
-        # Debug
-        if self.verbose:
-            print("\nScript executed. SSH channel closed.")
+            # Ensure command completed
+            _ = stdout.channel.recv_exit_status()
+            
+            # Capture any final stdout and stderr output
+            self.stdout = stdout.read().decode().strip()
+            self.stderr = stderr.read().decode().strip()
+
+            # Debug
+            if self.verbose:
+                print("\nScript executed. SSH channel closed.")
         
         # Close connection to Red Pitaya
         ssh.close()
 
-        return stdout.read(), stderr.read()
-    
+        return None
 
 
     ################ Red Pitaya Client Methods ################
@@ -218,12 +233,12 @@ class Instrument:
         print(f"[Instrument] Queued memory variable set: {variable} = {value}")
 
 
-    def kill_servers(self):
+    def stop_servers(self):
         """Send kill command to Red Pitaya."""
         self.control_client.start(self.ip)
         time.sleep(1)  # Give time for kill to be sent
         self.control_client.stop()
-        print("[Instrument] Kill command sent.")
+        print("[Instrument] Red pitaya methods shut down successfully.")
 
     
     ################ Run Piccolo Instrument ################
@@ -256,29 +271,38 @@ if __name__ == "__main__":
         script_args=["--verbose", "--very_verbose"],
         rp_dir="piccolo_testing0430",
         verbose=False,
-        very_verbose=False
+        very_verbose=False,
+        debug_flag=False
     )
 
     try:
-        
-        ############ LAUNCHING PICCOLO ON RED PITAYA ############
+        print("\n-----------Running Piccolo Instrument-----------")
+        ############ LAUNCHING PICCOLO METHODS ON RED PITAYA ############
         launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
 
         launch_thread.start()
-        print("\nLaunching Piccolo RP server...")
+        print("\n[piccolo-instrument] Launching Piccolo RP server...")
 
         time.sleep(10)  # Give time for the server to start
 
         # Start cliend threads
-        input("\nPress Enter to start the client threads...")
+        print("\n[piccolo-instrument] Piccolo server started.")
+        
+        time.sleep(1)  # Give time for the server to start
+
+        
+        ############ CONNECTING PICCOLO METHODS ON RED PITAYA TO PC ############
+
         # Start streaming clients
         instrument.start_clients()
 
         time.sleep(1)  # Give time for the clients to start
+
+        print("\n[piccolo-instrument] Piccolo PC clients started.")
         
         
         ############ TESTING ADC STREAM CLIENT ############
-        print("\n[Test] ADC Stream Client started.")
+        print("\n[Test] ADC Stream Client testing.")
 
         for _ in range(10):  # ~1 second if 0.1s stream interval
             time.sleep(0.1)
@@ -293,7 +317,7 @@ if __name__ == "__main__":
 
 
         ############ TESTING MEM STREAM CLIENT ############
-        print("\n[Test] Memory Stream Client started.")
+        print("\n[Test] Memory Stream Client testing.")
         
         for _ in range(10):
             time.sleep(0.1)
@@ -305,7 +329,7 @@ if __name__ == "__main__":
 
         
         ############ TESTING MEMORY COMMAND CLIENT ############
-        print("\n[Test] Memory Command Client started.")
+        print("\n[Test] Memory Command Client testing.")
 
         var_name = "low_intensity_thresh[0]"
         var_value = 1234
@@ -330,12 +354,14 @@ if __name__ == "__main__":
             instrument.stop_clients()
 
         time.sleep(1)  # Give time for the clients to stop
-        
 
+        
     except KeyboardInterrupt:
         print("Interrupted by user.")
     except socket.error as sock_err:
         print(f"Socket error: {sock_err}")
     except Exception as local_err:
         print(f"Error: {local_err}")
+    finally:
+        instrument.stop_servers()
 

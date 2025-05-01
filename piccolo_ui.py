@@ -28,7 +28,8 @@ from bokeh.server.server import Server
 
 # Our code, one .py file per module, copy files to your local directory:
 import concurrency_tools as ct  # github.com/AndrewGYork/tools
-from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
+from piccolo_instrument_sim import InstrumentSim # github.com/nybergg/piccolo
+from piccolo_instrument import Instrument # github.com/nybergg/piccolo
 
 class UI:
     def __init__(self,
@@ -51,6 +52,8 @@ class UI:
             return None
         self.doc.on_session_destroyed(_session_destroyed)
         # create launch buttons for hardware and sim:
+        
+        self._init_hw()
         if simulate:
             self._init_sim()
         else:
@@ -61,52 +64,72 @@ class UI:
     def _init_hw(self):
         if self.verbose:
             print("%s: initializing hardware"%self.name)
-        return None
+        
+        # Launch piccolo instrument:
+        self.instrument = ct.ObjectInSubprocess(Instrument)
+        # self.instrument_lock = threading.Lock()
+        time.sleep(20)
+        input("Press Enter to continue...") # wait for user input
+        # with self.instrument_lock:
+        #     self._setup_data_sources()
+        #     self._setup_ui_components()
+        #     # update ui every 150ms:
+        #     self.timers = np.zeros(100)
+        #     self.doc.add_periodic_callback(self._update_ui, 150)
+            
+        # ch1 = instrument.stream_clients["adc"].adc1_data
+        # ch2 = instrument.stream_clients["adc"].adc2_data
+        # fpgaoutput = instrument.stream_clients["memory"].fpgaoutput
 
+        # var_name = "low_intensity_thresh[0]"
+        # var_value = 1234
+        # instrument.set_memory_variable(var_name, var_value)
+        
     def _init_sim(self):
-        def _update_ui():
-            # Pull data from subprocess and update the datasource and plot:
-            with self.dg_lock:
-                # Update pmt data:
-                self.sipm0.data = {'x':self.dg.time_ms,
-                                         'y':self.dg.signal[0]}
-                self.sipm1.data = {'x':self.dg.time_ms,
-                                         'y':self.dg.signal[1]}
-                for key in self.rolling_source_2d:
-                    self.rolling_source_2d[key].extend(self.dg.data2d[key])
-                    if self.buffer_length == 0:
-                        self.rolling_source_2d[key] = [np.nan]
-                    elif len(self.rolling_source_2d[key]) > self.buffer_length:
-                        self.rolling_source_2d[key] = (
-                            self.rolling_source_2d[key][-self.buffer_length:])
-                self.source_2d.data = self.rolling_source_2d
-                # time update and display:
-                self.timers = np.roll(self.timers, 1)
-                self.timers[0] = time.perf_counter()
-                s_per_update = np.mean(np.diff(self.timers)) * -1
-                self.plot.title.text = (
-                    f"Update Rate: {1/s_per_update:.01f} Hz"
-                    f" ({s_per_update*1000:.00f} ms)")
-        # Run CPU intensive DataGenerator in subprocess:
-        self.dg = ct.ObjectInSubprocess(DataGenerator)
-        self.dg_lock = threading.Lock()
+        # Run CPU intensive InstrumentSim in subprocess:
+        self.sim = ct.ObjectInSubprocess(InstrumentSim)
+        self.sim_lock = threading.Lock()
         # Initialize UI components:
-        with self.dg_lock:
+        with self.sim_lock:
             self._setup_data_sources()
             self._setup_ui_components()
             # update ui every 150ms:
             self.timers = np.zeros(100)
-            self.doc.add_periodic_callback(_update_ui, 150)
+            self.doc.add_periodic_callback(self._update_ui, 150)
         return None
+    
+    def _update_ui(self):
+        # Pull data from subprocess and update the datasource and plot:
+        with self.sim_lock:
+            # Update sipm data:
+            self.sipm0.data = {'x':self.sim.time_ms,
+                                        'y':self.sim.signal[0]}
+            self.sipm1.data = {'x':self.sim.time_ms,
+                                        'y':self.sim.signal[1]}
+            for key in self.rolling_source_2d:
+                self.rolling_source_2d[key].extend(self.sim.data2d[key])
+                if self.buffer_length == 0:
+                    self.rolling_source_2d[key] = [np.nan]
+                elif len(self.rolling_source_2d[key]) > self.buffer_length:
+                    self.rolling_source_2d[key] = (
+                        self.rolling_source_2d[key][-self.buffer_length:])
+            self.source_2d.data = self.rolling_source_2d
+            # time update and display:
+            self.timers = np.roll(self.timers, 1)
+            self.timers[0] = time.perf_counter()
+            s_per_update = np.mean(np.diff(self.timers)) * -1
+            self.plot.title.text = (
+                f"Update Rate: {1/s_per_update:.01f} Hz"
+                f" ({s_per_update*1000:.00f} ms)")
 
     def _setup_data_sources(self):
         # Initialize data sources for the generated data (s to ms):
-        self.sipm0 = ColumnDataSource(data={'x':self.dg.time_ms,
-                                                  'y':self.dg.signal[0]})
-        self.sipm1 = ColumnDataSource(data={'x':self.dg.time_ms,
-                                                  'y':self.dg.signal[1]})
-        self.source_2d = ColumnDataSource(data=self.dg.data2d)
-        self.rolling_source_2d = self.dg.data2d.copy()
+        self.sipm0 = ColumnDataSource(data={'x':self.sim.time_ms,
+                                                  'y':self.sim.signal[0]})
+        self.sipm1 = ColumnDataSource(data={'x':self.sim.time_ms,
+                                                  'y':self.sim.signal[1]})
+        self.source_2d = ColumnDataSource(data=self.sim.data2d)
+        self.rolling_source_2d = self.sim.data2d.copy()
         # Initialize data sources for the interactive callbacks:
         self.thresh = 0.05
         self.buffer_length = 5000
@@ -148,31 +171,31 @@ class UI:
 
     def _create_button(self):
         def _update_toggle(state):
-            with self.dg_lock:
+            with self.sim_lock:
                 if state:
                     self.button.label = "Stop"
                     self.button.button_type = "danger"
-                    self.dg.start_generating()
+                    self.sim.start_generating()
                 else:
                     self.button.label = "Start"
                     self.button.button_type = "success"
-                    self.dg.stop_generating()        
+                    self.sim.stop_generating()        
         self.button = Toggle(label="Start", button_type="success")
         self.button.on_click(_update_toggle)
         return None
 
     def _create_sliders(self):
         def _gain0_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_sipm_gain(0, new)
+            with self.sim_lock:
+                self.sim.set_sipm_gain(0, new)
             return None
         def _gain1_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_sipm_gain(1, new)
+            with self.sim_lock:
+                self.sim.set_sipm_gain(1, new)
             return None
         def _threshold_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_threshold(new)
+            with self.sim_lock:
+                self.sim.set_threshold(new)
                 self.thresh_line.location = self.sliders[2].value
             return None
         slider_margin = (10, 10, 20, 50)
@@ -222,7 +245,7 @@ class UI:
 
     def _create_bufferspinner(self):
         def _spinner_changed(attr, old, new):
-            with self.dg_lock:
+            with self.sim_lock:
                 self.buffer_length = self.bufferspinner.value
             return None
         self.bufferspinner = Spinner(
@@ -303,10 +326,10 @@ class UI:
         # Attach Javascript and callback to plot for 'selectiongeometry' event:
         self.plot2d.js_on_event(SelectionGeometry, callback)
         def _boxselect_pass(attr, old, new):
-            with self.dg_lock:
+            with self.sim_lock:
                 print("Box Select Callback Triggered")
                 # Pass box values sim through the pipe to set gate values:
-                self.dg.set_gate_limits(dict(new))
+                self.sim.set_gate_limits(dict(new))
                 # Store box values in ui box_select and update box select text:
                 self.boxselect = new
                 self.custom_div.text = self._create_divhtml()        

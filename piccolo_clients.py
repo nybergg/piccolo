@@ -149,7 +149,7 @@ class MemoryCommandClient(BaseClient):
 
 
 class ControlCommandClient(BaseClient):
-    """Send a one-time kill/control command."""
+    """Send a one-time shutdown command for piccolo methods on the Red Pitaya."""
     def __init__(self, port=5000):
         super().__init__(port, is_streaming_client=False)
 
@@ -158,11 +158,11 @@ class ControlCommandClient(BaseClient):
         message = struct.pack("I", kill_cmd).ljust(16, b'\x00')
 
         try:
-            print("[ControlCommandClient] Sending kill command...")
+            print("[ControlCommandClient] Sending piccolo_rp shutdown command...")
             self.sock.sendall(message)
-            print("[ControlCommandClient] Kill command sent successfully.")
+            print("[ControlCommandClient] Shutdown command sent successfully.")
         except Exception as e:
-            print(f"[ControlCommandClient] Error sending kill command: {e}")
+            print(f"[ControlCommandClient] Error sending shutdown command: {e}")
         finally:
             self.stop_flag.set()
             self.close()
