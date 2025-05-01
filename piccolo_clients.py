@@ -3,6 +3,7 @@ import struct
 import threading
 import time
 import json
+import numpy as np
 
 def recv_data(sock, size):
     """Helper function to receive correct 'size' bytes."""
@@ -68,14 +69,22 @@ class ADCStreamClient(BaseClient):
         self.lock = threading.Lock()
 
     def _run(self):
-        # message = struct.pack("I", 3).ljust(16, b'\x00')
+        message = struct.pack("I", 3).ljust(16, b'\x00')
+        n_channels = 2
+        buffer_size = 4096 
+        mem_size = 4
+        packet_size = n_channels * buffer_size * mem_size # 2 channels, 16384 floats, each 4 bytes
+
         try:
             while not self.stop_flag.is_set():
-                # self.sock.sendall(message)
-                data = recv_data(self.sock, 2 * 16384 * 4)
+                self.sock.sendall(message)
+                data = recv_data(self.sock, packet_size)
                 if data:
                     with self.lock:
-                        self.latest_data = data
+                        self.latest_data = struct.unpack(f'{n_channels*buffer_size}f', data) # Unpack as floats in a list
+                        self.adc1_data = np.array(self.latest_data[:buffer_size]) #TODO: should this be managed in the client class or in the instrument class?
+                        self.adc2_data = np.array(self.latest_data[buffer_size:])
+                
         except Exception as e:
             print(f"[ADCStreamClient] Error during _run: {e}")
         finally:
@@ -100,10 +109,12 @@ class MemoryStreamClient(BaseClient):
                 if data:
                     with self.lock:
                         self.latest_data = data
+                        self.fpgaoutput = json.loads(data.decode())
         except Exception as e:
             print(f"[MemoryStreamClient] Error during _run: {e}")
         finally:
             self.close()
+
 
 
 class MemoryCommandClient(BaseClient):
@@ -116,7 +127,7 @@ class MemoryCommandClient(BaseClient):
     def send_set_command(self, variable, value):
         """Queue a memory set command (variable and value separately)."""
         with self.lock:
-            self.command_queue.append((variable, str(value)))
+            self.command_queue.append((variable, value))
 
     def _run(self):
         try:

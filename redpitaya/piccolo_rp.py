@@ -384,9 +384,12 @@ class PiccoloRP:
             if self.verbose:
                 print("Writing droplet parameters to CSV file...")
             row = [timestamp_ms]
-            for var in self.mmap_lookup:
-                val = self.get_var[var]
+            
+            for var_name, val in self.fpga_vars.items():
                 row.append(val)
+                
+                if self.very_verbose:
+                    print(f"Logging {var_name}: {val}")
 
             self.csv_writer.writerow(row)
             self.csv_file.flush()
@@ -409,7 +412,9 @@ class PiccoloRP:
     def stop_logging(self):
         self.stop_event = True
         self.csv_file.close()
-        print("Logging stopped.")
+        
+        if self.verbose:
+            print("Logging stopped.")
 
     # def _convert_width(self, raw):
     #     """
