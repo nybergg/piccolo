@@ -116,7 +116,6 @@ class MemoryStreamClient(BaseClient):
             self.close()
 
 
-
 class MemoryCommandClient(BaseClient):
     """Send memory (variable/value) updates."""
     def __init__(self, port=5003):

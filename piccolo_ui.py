@@ -52,82 +52,74 @@ class UI:
             return None
         self.doc.on_session_destroyed(_session_destroyed)
         # create launch buttons for hardware and sim:
-        
-        self._init_hw()
+        self.simulate = simulate
         if simulate:
             self._init_sim()
-        else:
+        else:  
             self._init_hw()
+        
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
-    def _init_hw(self):
-        if self.verbose:
-            print("%s: initializing hardware"%self.name)
-        
-        # Launch piccolo instrument:
-        self.instrument = ct.ObjectInSubprocess(Instrument)
-        # self.instrument_lock = threading.Lock()
-        time.sleep(20)
-        input("Press Enter to continue...") # wait for user input
-        # with self.instrument_lock:
-        #     self._setup_data_sources()
-        #     self._setup_ui_components()
-        #     # update ui every 150ms:
-        #     self.timers = np.zeros(100)
-        #     self.doc.add_periodic_callback(self._update_ui, 150)
-            
-        # ch1 = instrument.stream_clients["adc"].adc1_data
-        # ch2 = instrument.stream_clients["adc"].adc2_data
-        # fpgaoutput = instrument.stream_clients["memory"].fpgaoutput
-
-        # var_name = "low_intensity_thresh[0]"
-        # var_value = 1234
-        # instrument.set_memory_variable(var_name, var_value)
-        
     def _init_sim(self):
         # Run CPU intensive InstrumentSim in subprocess:
         self.sim = ct.ObjectInSubprocess(InstrumentSim)
         self.sim_lock = threading.Lock()
         # Initialize UI components:
         with self.sim_lock:
-            self._setup_data_sources()
+            self.sipm_source = [self.sim.signal[0],
+                                self.sim.signal[1]]
+            self._setup_fpgaout_sources()
             self._setup_ui_components()
             # update ui every 150ms:
             self.timers = np.zeros(100)
             self.doc.add_periodic_callback(self._update_ui, 150)
         return None
     
-    def _update_ui(self):
-        # Pull data from subprocess and update the datasource and plot:
-        with self.sim_lock:
-            # Update sipm data:
-            self.sipm0.data = {'x':self.sim.time_ms,
-                                        'y':self.sim.signal[0]}
-            self.sipm1.data = {'x':self.sim.time_ms,
-                                        'y':self.sim.signal[1]}
-            for key in self.rolling_source_2d:
-                self.rolling_source_2d[key].extend(self.sim.data2d[key])
-                if self.buffer_length == 0:
-                    self.rolling_source_2d[key] = [np.nan]
-                elif len(self.rolling_source_2d[key]) > self.buffer_length:
-                    self.rolling_source_2d[key] = (
-                        self.rolling_source_2d[key][-self.buffer_length:])
-            self.source_2d.data = self.rolling_source_2d
-            # time update and display:
-            self.timers = np.roll(self.timers, 1)
-            self.timers[0] = time.perf_counter()
-            s_per_update = np.mean(np.diff(self.timers)) * -1
-            self.plot.title.text = (
-                f"Update Rate: {1/s_per_update:.01f} Hz"
-                f" ({s_per_update*1000:.00f} ms)")
+    def _init_hw(self):
+        if self.verbose:
+            print("%s: initializing hardware"%self.name)
+        
+        # Launch piccolo instrument:
+        self.instrument = Instrument()
+        self.instrument_lock = threading.Lock()
+        self.instrument.launch_piccolo_rp()
+        time.sleep(10)  # Give time for the server to start
+        self.instrument.start_clients()
+        time.sleep(1)  # Give time for the clients to start
 
-    def _setup_data_sources(self):
+        # Launch simulation as well
+        self.sim = ct.ObjectInSubprocess(InstrumentSim)
+        self.sim_lock = threading.Lock()
+        # Initialize UI components:
+        
+        if self.verbose:
+            print("%s: -> hardware initialized"%self.name)
+
+       # Setup data sources and UI components:
+        with self.instrument_lock:
+            with self.sim_lock:
+                self.sipm_source = [self.instrument.stream_clients["adc"].adc1_data,
+                                    self.instrument.stream_clients["adc"].adc2_data]
+                self._setup_sipm_sources()
+                self._setup_fpgaout_sources()
+                self._setup_ui_components()
+                # update ui every 150ms:
+                self.timers = np.zeros(100)
+                self.doc.add_periodic_callback(self._update_ui, 150)
+        return None
+
+    def _setup_sipm_sources(self):
         # Initialize data sources for the generated data (s to ms):
-        self.sipm0 = ColumnDataSource(data={'x':self.sim.time_ms,
-                                                  'y':self.sim.signal[0]})
-        self.sipm1 = ColumnDataSource(data={'x':self.sim.time_ms,
-                                                  'y':self.sim.signal[1]})
+        time_ms = np.linspace(0, 50, 4096)
+        self.sipm0 = ColumnDataSource(data={'x':time_ms,
+                                            'y':self.sipm_source[0]})
+        self.sipm1 = ColumnDataSource(data={'x':time_ms,
+                                            'y':self.sipm_source[1]})
+        return None
+
+    def _setup_fpgaout_sources(self):
+        # Initialize data sources for the generated data (s to ms):
         self.source_2d = ColumnDataSource(data=self.sim.data2d)
         self.rolling_source_2d = self.sim.data2d.copy()
         # Initialize data sources for the interactive callbacks:
@@ -168,6 +160,29 @@ class UI:
                 )
             )
         return None
+    
+    def _update_ui(self):
+        # Pull data from subprocess and update the datasource and plot:
+        with self.sim_lock:
+            with self.instrument_lock:
+                # Update sipm data:
+                self.sipm0.data['y'] = self.instrument.stream_clients["adc"].adc1_data
+                self.sipm1.data['y'] = self.instrument.stream_clients["adc"].adc2_data
+                for key in self.rolling_source_2d:
+                    self.rolling_source_2d[key].extend(self.sim.data2d[key])
+                    if self.buffer_length == 0:
+                        self.rolling_source_2d[key] = [np.nan]
+                    elif len(self.rolling_source_2d[key]) > self.buffer_length:
+                        self.rolling_source_2d[key] = (
+                            self.rolling_source_2d[key][-self.buffer_length:])
+                self.source_2d.data = self.rolling_source_2d
+                # time update and display:
+                self.timers = np.roll(self.timers, 1)
+                self.timers[0] = time.perf_counter()
+                s_per_update = np.mean(np.diff(self.timers)) * -1
+                self.plot.title.text = (
+                    f"Update Rate: {1/s_per_update:.01f} Hz"
+                    f" ({s_per_update*1000:.00f} ms)")
 
     def _create_button(self):
         def _update_toggle(state):
@@ -403,10 +418,15 @@ class UI:
         </div>
         """
         return html_content
+    
+    def _shutdown_hw(self):
+        self.instrument.stop_clients()
+        time.sleep(1)  # Give time for the clients to stop
+        self.instrument.stop_servers()
 
 # -> Edit args and kwargs here for test block:
 def func(doc): # get instance of class WITH args and kwargs
-    bk_doc = UI(doc, sys, simulate=True, verbose=True)
+    bk_doc = UI(doc, sys, simulate=False, verbose=True)
     return bk_doc
 
 if __name__ == '__main__':

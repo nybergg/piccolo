@@ -32,8 +32,8 @@ class Instrument:
                  local_dir="redpitaya", 
                  script_args=None, 
                  rp_dir="piccolo_testing",
-                 verbose=True,
-                 very_verbose=True,
+                 verbose=False,
+                 very_verbose=False,
                  debug_flag=False 
                  ):
         
@@ -240,29 +240,6 @@ class Instrument:
         self.control_client.stop()
         print("[Instrument] Red pitaya methods shut down successfully.")
 
-    
-    ################ Run Piccolo Instrument ################
-    def run(self):
-        print("\n-----------Running Piccolo Instrument-----------")
-        ############ LAUNCHING PICCOLO ON RED PITAYA ############
-
-        print("\n-----------Launching Red Pitaya Methods-----------")
-        launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
-        launch_thread.start()
-        print("\nLaunching Piccolo RP server...")
-
-        time.sleep(10)  # Give time for the server to start
-
-        # Start cliend threads
-        print("\n-----------Launching PC Methods-----------")
-        # Start streaming clients
-        instrument.start_clients()
-
-        print("\n-----------Running Red Pitaya & PC Methods-----------")
-
-
-
-
 
 if __name__ == "__main__":
     instrument = Instrument(
@@ -311,6 +288,8 @@ if __name__ == "__main__":
                 ch1 = instrument.stream_clients["adc"].adc1_data
                 ch2 = instrument.stream_clients["adc"].adc2_data
 
+                print({len(ch1), len(ch2)})
+
                 print(f"Ch1 Mean: {np.mean(ch1):.4f}, Ch2 Mean: {np.mean(ch2):.4f}")
             else:
                 print("[Test] No data yet.")
@@ -355,7 +334,7 @@ if __name__ == "__main__":
 
         time.sleep(1)  # Give time for the clients to stop
 
-        
+            
     except KeyboardInterrupt:
         print("Interrupted by user.")
     except socket.error as sock_err:
@@ -364,4 +343,3 @@ if __name__ == "__main__":
         print(f"Error: {local_err}")
     finally:
         instrument.stop_servers()
-
