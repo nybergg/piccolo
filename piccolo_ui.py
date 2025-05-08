@@ -38,11 +38,14 @@ class UI:
                  name='Piccolo_ui',
                  simulate=False,
                  verbose=True):
+        
         self.doc = doc
         self.name = name
         self.verbose = verbose
+        
         if self.verbose:
             print("%s: opening..."%self.name)
+        
         # Detect if browser is closed:
         def _session_destroyed(session_context):
             if self.verbose:
@@ -50,8 +53,10 @@ class UI:
                     self.name, session_context.destroyed))
             sys.exit()
             return None
+        
         self.doc.on_session_destroyed(_session_destroyed)
-        # create launch buttons for hardware and sim:
+        
+        # Initialize simulation or hardware:
         self.simulate = simulate
         if simulate:
             self._init_sim()
@@ -67,8 +72,8 @@ class UI:
         self.sim_lock = threading.Lock()
         # Initialize UI components:
         with self.sim_lock:
-            self.sipm_source = [self.sim.signal[0],
-                                self.sim.signal[1]]
+            self._setup_sipm_sources(source1=self.sim.signal[0],
+                                     source2=self.sim.signal[1])
             self._setup_fpgaout_sources()
             self._setup_ui_components()
             # update ui every 150ms:
@@ -81,12 +86,13 @@ class UI:
             print("%s: initializing hardware"%self.name)
         
         # Launch piccolo instrument:
-        self.instrument = Instrument()
+        self.instrument = Instrument(rp_dir="piccolo_testing0505")
         self.instrument_lock = threading.Lock()
         self.instrument.launch_piccolo_rp()
-        time.sleep(10)  # Give time for the server to start
+        time.sleep(6)  # Give time for the server to start
         self.instrument.start_clients()
-        time.sleep(1)  # Give time for the clients to start
+        time.sleep(5)  # Give time for the clients to start
+        self.instrument.start_memory_stream_handler()
 
         # Launch simulation as well
         self.sim = ct.ObjectInSubprocess(InstrumentSim)
@@ -99,9 +105,9 @@ class UI:
        # Setup data sources and UI components:
         with self.instrument_lock:
             with self.sim_lock:
-                self.sipm_source = [self.instrument.stream_clients["adc"].adc1_data,
-                                    self.instrument.stream_clients["adc"].adc2_data]
-                self._setup_sipm_sources()
+                self.instrument.pass_adc_stream_data()
+                self._setup_sipm_sources(source1=self.instrument.adc1_data,
+                                            source2=self.instrument.adc2_data)
                 self._setup_fpgaout_sources()
                 self._setup_ui_components()
                 # update ui every 150ms:
@@ -109,19 +115,21 @@ class UI:
                 self.doc.add_periodic_callback(self._update_ui, 150)
         return None
 
-    def _setup_sipm_sources(self):
+    def _setup_sipm_sources(self, source1, source2):
         # Initialize data sources for the generated data (s to ms):
         time_ms = np.linspace(0, 50, 4096)
         self.sipm0 = ColumnDataSource(data={'x':time_ms,
-                                            'y':self.sipm_source[0]})
+                                            'y':source1})
         self.sipm1 = ColumnDataSource(data={'x':time_ms,
-                                            'y':self.sipm_source[1]})
+                                            'y':source2})
         return None
 
     def _setup_fpgaout_sources(self):
         # Initialize data sources for the generated data (s to ms):
-        self.source_2d = ColumnDataSource(data=self.sim.data2d)
-        self.rolling_source_2d = self.sim.data2d.copy()
+        if self.simulate:
+            self.scatter = ColumnDataSource(data=self.sim.drop_data)
+        else:
+            self.scatter = ColumnDataSource(data={"x": [], "y": [], "density": []})
         # Initialize data sources for the interactive callbacks:
         self.thresh = 0.05
         self.buffer_length = 5000
@@ -162,28 +170,49 @@ class UI:
         return None
     
     def _update_ui(self):
-        # Pull data from subprocess and update the datasource and plot:
-        with self.sim_lock:
-            with self.instrument_lock:
-                # Update sipm data:
-                self.sipm0.data['y'] = self.instrument.stream_clients["adc"].adc1_data
-                self.sipm1.data['y'] = self.instrument.stream_clients["adc"].adc2_data
-                for key in self.rolling_source_2d:
-                    self.rolling_source_2d[key].extend(self.sim.data2d[key])
-                    if self.buffer_length == 0:
-                        self.rolling_source_2d[key] = [np.nan]
-                    elif len(self.rolling_source_2d[key]) > self.buffer_length:
-                        self.rolling_source_2d[key] = (
-                            self.rolling_source_2d[key][-self.buffer_length:])
-                self.source_2d.data = self.rolling_source_2d
-                # time update and display:
-                self.timers = np.roll(self.timers, 1)
-                self.timers[0] = time.perf_counter()
-                s_per_update = np.mean(np.diff(self.timers)) * -1
-                self.plot.title.text = (
-                    f"Update Rate: {1/s_per_update:.01f} Hz"
-                    f" ({s_per_update*1000:.00f} ms)")
+        # Pull data from subprocess and update the data sources and plots
+        if not self.simulate:
+            with self.sim_lock:
+                with self.instrument_lock:
+                    # Update SiPM data
+                    self.instrument.pass_adc_stream_data()
+                    self.sipm0.data['y'] = self.instrument.adc1_data
+                    self.sipm1.data['y'] = self.instrument.adc2_data
 
+                    # Update droplet scatter plot from hardware
+                    self.instrument.pass_memory_stream_data(keys = ["cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]"])
+                    self.scatter.data['x'] = self.instrument.droplet_data_key1
+                    self.scatter.data['y'] = self.instrument.droplet_data_key2
+                    self.scatter.data['density'] = np.ones(len(self.instrument.droplet_data_key2))
+
+        else:
+            with self.sim_lock:
+                # Update SiPM simulation data
+                self.sipm0.data['y'] = self.sim.signal[0]
+                self.sipm1.data['y'] = self.sim.signal[1]
+
+                # Update droplet scatter plot from simulation
+                self._update_scatter_source_sim()
+
+        # Update timing label
+        self.timers = np.roll(self.timers, 1)
+        self.timers[0] = time.perf_counter()
+        s_per_update = np.mean(np.diff(self.timers)) * -1
+        self.plot.title.text = (
+            f"Update Rate: {1/s_per_update:.01f} Hz"
+            f" ({s_per_update*1000:.00f} ms)")
+        
+    def _update_scatter_source_sim(self):
+        for key in self.rolling_source_2d:
+            self.rolling_source_2d[key].extend(self.sim.droplet_data[key])
+            if self.buffer_length == 0:
+                self.rolling_source_2d[key] = [np.nan]
+            elif len(self.rolling_source_2d[key]) > self.buffer_length:
+                self.rolling_source_2d[key] = (
+                    self.rolling_source_2d[key][-self.buffer_length:])
+        self.source_2d.data = self.rolling_source_2d
+    
+    
     def _create_button(self):
         def _update_toggle(state):
             with self.sim_lock:
@@ -292,8 +321,8 @@ class UI:
             width=450,
             x_axis_label="Channel 1 AUC",
             y_axis_label="Channel 2 AUC",
-            x_range=(1e3, 1e6),
-            y_range=(1e3, 1e6),
+            x_range=(1e-1, 1e0),
+            y_range=(1e-1, 1e0),
             x_axis_type="log",
             y_axis_type="log",
             title="Density Scatter Plot",
@@ -302,7 +331,7 @@ class UI:
         glyph = self.plot2d.scatter(
             "x",
             "y",
-            source=self.source_2d,
+            source=self.scatter,
             size=2,
             color={"field": "density", "transform": color_mapper},
             line_color=None,

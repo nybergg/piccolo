@@ -341,6 +341,7 @@ class PiccoloRP:
 
     
     ################ Logging methods ################
+
     def _initialize_csv(self):
         """Open the CSV file and write the header. For multi-channel variables, expand headers."""
         if self.verbose:
@@ -416,49 +417,9 @@ class PiccoloRP:
         if self.verbose:
             print("Logging stopped.")
 
-    # def _convert_width(self, raw):
-    #     """
-    #     Convert clock cycles to milliseconds.
-    #     The conversion factor is determined by the clock frequency: (clock_MHz * 1000) cycles per millisecond.
-    #     """
-    #     factor = self.clock_calibration * 1000  # cycles per millisecond
-    #     if isinstance(raw, list):
-    #         return [x / factor for x in raw]
-    #     return raw / factor
-    
-    # def _convert_intensity(self, raw, channel):
-    #     """
-    #     Convert raw intensity to volts using calibration parameters for the specified channel.
-    #     """
-    #     if channel not in self.voltage_calibration:
-    #         raise ValueError(f"Calibration parameters for channel {channel} not found.")
-    #     params = self.voltage_calibration[channel]
-    #     return (raw - params["offset"]) * params["gain"] / params["buffer_size"]
-    
-    # def _convert_area(self, raw, channel):
-    #     """
-    #     Convert raw area (clock cycles x raw intensity) to V·ms.
-    #     First converts the raw value to volts, then converts clock cycles to milliseconds using the clock_MHz value.
-    #     """
-    #     if channel not in self.voltage_calibration:
-    #         raise ValueError(f"Calibration parameters for channel {channel} not found.")
-    #     params = self.voltage_calibration[channel]
-    #     factor = self.clock_calibration * 1000  # cycles per millisecond
-    #     return ((raw - params["offset"]) * params["gain"] / params["buffer_size"]) / factor
-    
-    # def _get_calibration(self, config_path):
-        # """
-        # Gets calibration configuration from a JSON file and initializes calibration parameters.
-        # """
-        # with open(config_path, "r") as f:
-        #     config = json.load(f)
-        # # Calibration parameters for voltage conversion.
-        # self.voltage_calibration = config.get("voltage_calibration", {})
-        # # Clock frequency in MHz for time conversions.
-        # self.clock_calibration = config.get("clock_MHz", 125)
-        
-    
+
     ################ Oscilliscope methods ################
+
     def _get_adc_data(self, continuous=False):
         """Read the ADC data from the memory."""    
         dec = rp.RP_DEC_128
@@ -635,7 +596,7 @@ class PiccoloRP:
 
         print("All servers running.")
         while True:
-            time.sleep(0.01)  # keep main thread alive
+            time.sleep(0.001)  # keep main thread alive
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
