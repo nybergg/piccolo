@@ -10,7 +10,7 @@ from scipy.stats import gaussian_kde
 class InstrumentSim:
     def __init__(self,
                  num_channels=2,
-                 signal_duration_ms=100,
+                 signal_length=4096,
                  sampling_interval_ms=0.02,
                  drop_interval_ms=1,
                  drop_width_ms=0.2,
@@ -32,11 +32,9 @@ class InstrumentSim:
         # init:
         if self.verbose:
             print("%s: opening..."%self.name)
-        self.time_ms = np.arange(
-            0, self.signal_duration_ms, self.sampling_interval_ms)
+        self.time_ms = np.arange(0, signal_length) * sampling_interval_ms
         self.signal = [np.zeros_like(self.time_ms)] * num_channels
-        self.drop_arrival_time_ms = np.arange(
-            0, self.signal_duration_ms, self.drop_interval_ms)
+        self.drop_arrival_time_ms = np.arange(0, signal_length) * drop_interval_ms
         self.set_threshold(0.03)
         self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
         self.sipm_gain = np.zeros(num_channels)
@@ -169,7 +167,7 @@ class InstrumentSim:
                 if np.size(auc_1) > 2:
                     xy = np.vstack([np.log(auc_1), np.log(auc_2)])
                     density = gaussian_kde(xy)(xy)
-                    self.data2d = {"x": auc_1, "y": auc_2, "density": density}
+                    self.droplet_data = {"x": auc_1, "y": auc_2, "density": density}
         if self.very_verbose:
             print("\n%s: -> done analysing drops"%self.name)
         return None
