@@ -42,6 +42,8 @@ class UI:
         self.doc = doc
         self.name = name
         self.verbose = verbose
+
+        self.sort_keys = ["cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]"]
         
         if self.verbose:
             print("%s: opening..."%self.name)
@@ -86,7 +88,7 @@ class UI:
             print("%s: initializing hardware"%self.name)
         
         # Launch piccolo instrument:
-        self.instrument = Instrument(rp_dir="piccolo_testing0505")
+        self.instrument = Instrument(rp_dir="piccolo_testing0505", verbose=True)
         self.instrument_lock = threading.Lock()
         self.instrument.launch_piccolo_rp()
         time.sleep(6)  # Give time for the server to start
@@ -183,9 +185,7 @@ class UI:
                     }
 
                     # Update droplet scatter plot from hardware
-                    self.instrument.pass_memory_stream_data(keys = 
-                                                            ["cur_droplet_intensity_v[0]", 
-                                                             "cur_droplet_intensity_v[1]"])
+                    self.instrument.pass_memory_stream_data(sort_keys = self.sort_keys)
                     self.scatter.data = {
                         'x': self.instrument.droplet_data_key1,
                         'y': self.instrument.droplet_data_key2,
@@ -379,13 +379,17 @@ class UI:
         # Attach Javascript and callback to plot for 'selectiongeometry' event:
         self.plot2d.js_on_event(SelectionGeometry, callback)
         def _boxselect_pass(attr, old, new):
+            print(f"Box select: {new}")
+            print(f"Dict: {dict(new)}")
             with self.sim_lock:
                 print("Box Select Callback Triggered")
                 # Pass box values sim through the pipe to set gate values:
                 self.sim.set_gate_limits(dict(new))
                 # Store box values in ui box_select and update box select text:
                 self.boxselect = new
-                self.custom_div.text = self._create_divhtml()        
+                self.custom_div.text = self._create_divhtml()
+            with self.instrument_lock:
+                self.instrument.set_gate_limits(new)        
         self.source_bx.on_change("data", _boxselect_pass)
         return None
 

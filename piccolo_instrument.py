@@ -318,21 +318,10 @@ class Instrument:
 
         return self.droplet_data
     
-    def pass_memory_stream_data(self, 
-                                keys = ["cur_droplet_intensity_v[0]", 
-                                        "cur_droplet_intensity_v[1]"]):
-        
-        self.droplet_data_key1 = self.droplet_data[keys[0]].values
-        self.droplet_data_key2 = self.droplet_data[keys[1]].values
-        # print("n\data being passed to ui for specific droplet ids")
-        # print(self.droplet_data['droplet_id'])
-        return self.droplet_data_key1, self.droplet_data_key2
     
-    def save_log(self, filename="droplet_log.csv"):
-        self.droplet_data.to_csv(filename, index=False)
-
     def reset_droplet_buffer(self):
         self.droplet_data = pd.DataFrame()
+
 
     def _compute_gain_and_offset(self, channel, gain_mode):
         gain_key = f"FE_{channel}_FS_G_{gain_mode}"
@@ -340,6 +329,82 @@ class Instrument:
         gain = self.calib_data[gain_key] 
         offset = self.calib_data[offset_key]
         return gain, offset
+
+
+    def save_log(self, filename="droplet_log.csv"):
+        self.droplet_data.to_csv(filename, index=False)
+    
+    
+    
+    ################ UI Droplet Data Passing Methods ################
+
+    def pass_memory_stream_data(self, 
+                                sort_keys = ["cur_droplet_intensity_v[0]", 
+                                             "cur_droplet_intensity_v[1]"]):
+        
+        self.sort_keys = sort_keys
+        self.droplet_data_key1 = self.droplet_data[sort_keys[0]].values
+        self.droplet_data_key2 = self.droplet_data[sort_keys[1]].values
+        # print("n\data being passed to ui for specific droplet ids")
+        # print(self.droplet_data['droplet_id'])
+        return self.droplet_data_key1, self.droplet_data_key2
+    
+    
+    def set_gate_limits(self, limits):
+        if self.verbose:
+            print(f"[Instrument] Recieved gate limits to set: {limits}")
+
+        sort_gates = {}
+
+        for i, key in enumerate(self.sort_keys):
+            # Parse channel index
+            ch = int(key[key.find('[')+1:key.find(']')])
+            ch_key = f"CH{ch+1}"
+            _, offset = self.calibration_values[ch_key]
+
+            # Select x/y based on index
+            low_coord = 'x0' if i == 0 else 'y0'
+            high_coord = 'x1' if i == 0 else 'y1'
+            low_val = limits[low_coord][0]
+            high_val = limits[high_coord][0]
+
+            # Unit conversion
+            def convert(val, key):
+                if "_vms" in key:
+                    return val * 8192.0 * 1000
+                elif "_ms" in key:
+                    return val * 1000
+                elif "_v" in key:
+                    return val * 8192.0 + offset
+                else:
+                    return val
+
+            low_converted = int(convert(low_val, key))
+            high_converted = int(convert(high_val, key))
+
+            # Determine parameter type
+            if "intensity" in key:
+                param = "intensity"
+            elif "width" in key:
+                param = "width"
+            elif "area" in key:
+                param = "area"
+            else:
+                raise ValueError(f"Unrecognized key: {key}")
+
+            sort_gates[f"low_{param}_thresh[{ch}]"] = low_converted
+            sort_gates[f"high_{param}_thresh[{ch}]"] = high_converted
+
+        if self.verbose:
+            print(f"[Instrument] Setting sort gates: {sort_gates}")
+        # Write sort_gates to FPGA memory
+        for var, val in sort_gates.items():
+            self.set_memory_variable(var, val)
+
+        # Save for inspection
+        self.sort_gates = sort_gates
+        
+        return self.sort_gates
     
 
 if __name__ == "__main__":
