@@ -106,8 +106,8 @@ class UI:
         with self.instrument_lock:
             with self.sim_lock:
                 self.instrument.pass_adc_stream_data()
-                self._setup_sipm_sources(source1=self.instrument.adc1_data,
-                                            source2=self.instrument.adc2_data)
+                self._setup_sipm_sources(source0=self.instrument.adc1_data,
+                                         source1=self.instrument.adc2_data)
                 self._setup_fpgaout_sources()
                 self._setup_ui_components()
                 # update ui every 150ms:
@@ -115,13 +115,13 @@ class UI:
                 self.doc.add_periodic_callback(self._update_ui, 150)
         return None
 
-    def _setup_sipm_sources(self, source1, source2):
+    def _setup_sipm_sources(self, source0, source1):
         # Initialize data sources for the generated data (s to ms):
         time_ms = np.linspace(0, 50, 4096)
-        self.sipm0 = ColumnDataSource(data={'x':time_ms,
-                                            'y':source1})
-        self.sipm1 = ColumnDataSource(data={'x':time_ms,
-                                            'y':source2})
+        self.sipm = ColumnDataSource(data={'x':time_ms,
+                                           'y0':source0,
+                                           'y1':source1
+                                           })
         return None
 
     def _setup_fpgaout_sources(self):
@@ -176,21 +176,30 @@ class UI:
                 with self.instrument_lock:
                     # Update SiPM data
                     self.instrument.pass_adc_stream_data()
-                    self.sipm0.data['y'] = self.instrument.adc1_data
-                    self.sipm1.data['y'] = self.instrument.adc2_data
+                    self.sipm.data = {
+                        'x': self.sipm.data["x"],
+                        'y0': self.instrument.adc1_data,
+                        'y1': self.instrument.adc2_data
+                    }
 
                     # Update droplet scatter plot from hardware
-                    self.instrument.pass_memory_stream_data(keys = ["cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]"])
-                    self.scatter.data['x'] = self.instrument.droplet_data_key1
-                    self.scatter.data['y'] = self.instrument.droplet_data_key2
-                    self.scatter.data['density'] = np.ones(len(self.instrument.droplet_data_key2))
+                    self.instrument.pass_memory_stream_data(keys = 
+                                                            ["cur_droplet_intensity_v[0]", 
+                                                             "cur_droplet_intensity_v[1]"])
+                    self.scatter.data = {
+                        'x': self.instrument.droplet_data_key1,
+                        'y': self.instrument.droplet_data_key2,
+                        'density': np.ones(len(self.instrument.droplet_data_key2)) * 9
+                    }
 
         else:
             with self.sim_lock:
                 # Update SiPM simulation data
-                self.sipm0.data['y'] = self.sim.signal[0]
-                self.sipm1.data['y'] = self.sim.signal[1]
-
+                self.sipm.data = {
+                        'x': self.sipm.data["x"],
+                        'y0': self.sim.signal[0],
+                        'y1': self.sim.signal[1]
+                    }
                 # Update droplet scatter plot from simulation
                 self._update_scatter_source_sim()
 
@@ -321,8 +330,8 @@ class UI:
             width=450,
             x_axis_label="Channel 1 AUC",
             y_axis_label="Channel 2 AUC",
-            x_range=(1e-1, 1e0),
-            y_range=(1e-1, 1e0),
+            x_range=(1e-1, 1e1),
+            y_range=(1e-1, 1e1),
             x_axis_type="log",
             y_axis_type="log",
             title="Density Scatter Plot",
@@ -333,7 +342,7 @@ class UI:
             "y",
             source=self.scatter,
             size=2,
-            color={"field": "density", "transform": color_mapper},
+            color='black', #{"field": "density", "transform": color_mapper},
             line_color=None,
             fill_alpha=0.6,
             )
@@ -394,15 +403,15 @@ class UI:
             )
         self.plot.line(
             "x",
-            "y",
-            source=self.sipm0,
+            "y0",
+            source=self.sipm,
             color="mediumseagreen",
             legend_label="SiPM0",
             )
         self.plot.line(
             "x",
-            "y",
-            source=self.sipm1,
+            "y1",
+            source=self.sipm,
             color="royalblue",
             legend_label="SiPM1"
             )

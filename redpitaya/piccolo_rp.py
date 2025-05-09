@@ -275,7 +275,7 @@ class PiccoloRP:
 
         self.fpga_vars = fpga_vars
         
-        return None
+        return fpga_vars
     
     def set_var(self, var_name, value):
         """Set a memory value to the specified address."""
@@ -537,7 +537,10 @@ class PiccoloRP:
                 msg = json.dumps(self.fpga_vars).encode()
                 length = struct.pack("I", len(msg)).ljust(16, b'\x00')
                 client.sendall(length + msg)
-                time.sleep(0.1)  # or trigger-based
+                time.sleep(0.005)  # or trigger-based
+                val = self.fpga_vars['droplet_id']
+                if self.verbose:
+                    print(f"Cur Droplet ID:{val}")
         except Exception as e:
             print(f"[MemStream] Error: {e}")
         finally:
@@ -638,6 +641,16 @@ if __name__ == "__main__":
     piccolo._set_defaults()
     piccolo.get_all()
     print("Reset variables to defaults")
+
+
+    print("--------Testing continuous get all--------")
+    for _ in range(30):
+        fpga_vars = piccolo.get_all()
+        val = fpga_vars['droplet_id']
+        print(f"Cur Droplet ID:{val}")
+        time.sleep(0.0001)
+
+
 
     print("\n////////// All Red Pitaya Testing Complete ///////////")
 

@@ -324,6 +324,8 @@ class Instrument:
         
         self.droplet_data_key1 = self.droplet_data[keys[0]].values
         self.droplet_data_key2 = self.droplet_data[keys[1]].values
+        # print("n\data being passed to ui for specific droplet ids")
+        # print(self.droplet_data['droplet_id'])
         return self.droplet_data_key1, self.droplet_data_key2
     
     def save_log(self, filename="droplet_log.csv"):
@@ -348,7 +350,7 @@ if __name__ == "__main__":
         rp_dir="piccolo_testing0430",
         verbose=True,
         very_verbose=False,
-        debug_flag=False
+        debug_flag=True
     )
 
     print("\n-----------Piccolo Instrument Initialization and Testing-----------")
@@ -410,13 +412,8 @@ if __name__ == "__main__":
         # Read the droplet data buffer
         instrument.droplet_data
         print(f"[Test] Droplet data buffer length: {len(instrument.droplet_data)}")
-        print(instrument.droplet_data.head())
+        print(instrument.droplet_data.head(30))
         instrument.save_log("droplet_log_0508.csv")
-
-        print("passing memory values")
-        key1, key2 = instrument.pass_memory_stream_data()
-        print(f"key1 {key1}")
-        print(f"key2 {key2}")
 
         # Stop the memory stream handler
         instrument.stop_memory_stream_handler()
@@ -428,7 +425,6 @@ if __name__ == "__main__":
         var_name = "low_intensity_thresh[0]"
         var_value = 1234
         
-
         try:
             # Read initial value
             fpgaoutput = instrument.memory_stream_client.fpgaoutput
