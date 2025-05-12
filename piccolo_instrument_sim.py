@@ -1,6 +1,7 @@
 # Imports from the python standard library:
 import numpy as np
 import threading
+import pandas as pd
 
 # Third party imports, installable via pip:
 from scipy.integrate import simpson
@@ -41,7 +42,8 @@ class InstrumentSim:
         self.sipm_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_sipm_gain(ch, 0.5)
-        self.data2d = {"x": [0], "y": [0], "density": [0]}
+        self.droplet_data = pd.DataFrame(columns=['x', 'y', 'density'])
+        self.buffer_size = 1000
         self._running = False
         if self.verbose:
             print("%s: -> open and ready."%self.name)
@@ -147,7 +149,7 @@ class InstrumentSim:
                         results["timestamp"].append(drop_time)
                         results["width"].append(drop_width)
                         results["max signal"].append(max_signal)
-                        results["auc"].append(auc * 1e6)
+                        results["auc"].append(auc)
                         results["fwhm"].append(fwhm)
                         results["baseline"].append(baseline)
                 # Calculate density measurement for the density scatter plot:
@@ -168,10 +170,22 @@ class InstrumentSim:
                 if np.size(auc_1) > 2:
                     xy = np.vstack([np.log(auc_1), np.log(auc_2)])
                     density = gaussian_kde(xy)(xy)
-                    self.droplet_data = {"x": auc_1, "y": auc_2, "density": density}
+                    cur_droplet_data = {"x": auc_1, "y": auc_2, "density": density}
+                    self._on_memory_data(fpgaoutput=cur_droplet_data)
         if self.very_verbose:
             print("\n%s: -> done analysing drops"%self.name)
         return None
+    
+    def _on_memory_data(self, fpgaoutput):
+
+        # Append to DataFrame
+        self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame(fpgaoutput)], ignore_index=True)
+
+        # Maintain rolling size
+        if len(self.droplet_data) > self.buffer_size:
+            self.droplet_data = self.droplet_data.iloc[-self.buffer_size:]
+
+        return self.droplet_data
 
     def set_threshold(self, threshold):
         if self.verbose:
