@@ -74,8 +74,7 @@ class UI:
         self.sim_lock = threading.Lock()
         # Initialize UI components:
         with self.sim_lock:
-            self._setup_sipm_sources(source1=self.sim.signal[0],
-                                     source2=self.sim.signal[1])
+            self._setup_sipm_sources()
             self._setup_fpgaout_sources()
             self._setup_ui_components()
             # update ui every 150ms:
@@ -107,28 +106,34 @@ class UI:
         with self.instrument_lock:
             with self.sim_lock:
                 # self.instrument.pass_adc_stream_data()
-                self._setup_sipm_sources(source0=self.instrument.adc1_data,
-                                         source1=self.instrument.adc2_data)
+                self._setup_sipm_sources()
                 self._setup_fpgaout_sources()
                 self._setup_ui_components()
+                
                 # update ui every 150ms:
                 self.timers = np.zeros(100)
-                self.doc.add_periodic_callback(self._update_ui, 150)
+                self.doc.add_periodic_callback(self._update_ui, 100)
         return None
 
-    def _setup_sipm_sources(self, source0, source1):
+    def _setup_sipm_sources(self):
         # Initialize data sources for the generated data (s to ms):
         time_ms = np.linspace(0, 50, 4096)
-        self.sipm = ColumnDataSource(data={'x':time_ms,
-                                           'y0':source0,
-                                           'y1':source1
-                                           })
+        if self.simulate:
+            self.sipm = ColumnDataSource(data={'x':time_ms,
+                                               'y0':self.sim.signal[0],
+                                               'y1':self.sim.signal[1]
+                                                })
+        else:
+            self.sipm = ColumnDataSource(data={'x':time_ms,
+                                               'y0':self.instrument.adc1_data,
+                                               'y1':self.instrument.adc2_data
+                                                })
         return None
 
     def _setup_fpgaout_sources(self):
         # Initialize data sources for the generated data (s to ms):
         if self.simulate:
-            self.scatter = ColumnDataSource(data=self.sim.drop_data)
+            self.scatter = ColumnDataSource(data=self.sim.droplet_data)
         else:
             self.scatter = ColumnDataSource(data={"x": [], "y": [], "density": []})
         # Initialize data sources for the interactive callbacks:
@@ -198,7 +203,12 @@ class UI:
                         'y1': self.sim.signal[1]
                     }
                 # Update droplet scatter plot from simulation
-                self._update_scatter_source_sim()
+                self.scatter.data = {
+                        'x': self.sim.droplet_data["x"].values,
+                        'y': self.sim.droplet_data["y"].values,
+                        'density': self.sim.droplet_data["density"].values
+                    }
+                # self._update_scatter_source_sim()
 
         # Update timing label
         self.timers = np.roll(self.timers, 1)
@@ -208,16 +218,6 @@ class UI:
             f"Update Rate: {1/s_per_update:.01f} Hz"
             f" ({s_per_update*1000:.00f} ms)")
         
-    def _update_scatter_source_sim(self):
-        for key in self.rolling_source_2d:
-            self.rolling_source_2d[key].extend(self.sim.droplet_data[key])
-            if self.buffer_length == 0:
-                self.rolling_source_2d[key] = [np.nan]
-            elif len(self.rolling_source_2d[key]) > self.buffer_length:
-                self.rolling_source_2d[key] = (
-                    self.rolling_source_2d[key][-self.buffer_length:])
-        self.source_2d.data = self.rolling_source_2d
-    
     
     def _create_button(self):
         def _update_toggle(state):
@@ -327,8 +327,8 @@ class UI:
             width=450,
             x_axis_label="Channel 1 AUC",
             y_axis_label="Channel 2 AUC",
-            x_range=(1e-1, 1e1),
-            y_range=(1e-1, 1e1),
+            x_range=(1e-2, 1e1),
+            y_range=(1e-2, 1e1),
             x_axis_type="log",
             y_axis_type="log",
             title="Density Scatter Plot",
@@ -467,7 +467,7 @@ class UI:
 
 # -> Edit args and kwargs here for test block:
 def func(doc): # get instance of class WITH args and kwargs
-    bk_doc = UI(doc, sys, simulate=False, verbose=True)
+    bk_doc = UI(doc, sys, simulate=True, verbose=True)
     return bk_doc
 
 if __name__ == '__main__':
