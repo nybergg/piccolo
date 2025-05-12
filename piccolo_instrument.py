@@ -55,10 +55,6 @@ class Instrument:
 
         # Get calibration values
         self.get_rp_calibration()
-        self.calibration_values = {
-            "CH1": self._compute_gain_and_offset("CH1", "LO"),
-            "CH2": self._compute_gain_and_offset("CH2", "LO")
-        }
         
         # Setup clients
         self.setup_clients()
@@ -90,7 +86,7 @@ class Instrument:
             print(f"Username: {self.username}")
             print(f"Password: {self.password}")
 
-        return None
+        return self.ip, self.username, self.password
     
     
     def get_rp_calibration(self):
@@ -119,17 +115,27 @@ class Instrument:
             if match:
                 key, value = match.groups()
                 calib_data[key] = int(value)
-        
-        self.calib_data = calib_data
-        
+                
+        calibration_values = {}
+
+        for channel in range(1,3):
+            gain_key = f"FE_CH{channel}_FS_G_LO"
+            offset_key = f"FE_CH{channel}_DC_offs"
+            gain = calib_data[gain_key] 
+            offset = calib_data[offset_key]
+            calibration_values[f"CH{channel}"] = [gain, offset]
+
+        self.calibration_values = calibration_values
+
         # Debug
         if self.verbose:
             print("\nRed Pitaya calibration values loaded successfully")
         if self.very_verbose:
             print("Calibration data:", calib_data)
+            print(f"Calibration values: {calibration_values}")
 
-        return calib_data
-    
+        return self.calibration_values
+            
     
     def launch_piccolo_rp(self):
         """ Get the local information for the Red Pitaya and run the script on it"""
@@ -212,8 +218,10 @@ class Instrument:
 
     def setup_clients(self):
         """Initialize but don't start clients yet."""
-        self.adc_stream_client = ADCStreamClient()
-        self.memory_stream_client = MemoryStreamClient()
+        self.adc_stream_client = ADCStreamClient(
+            data_callback=self._on_adc_data)
+        self.memory_stream_client = MemoryStreamClient(
+            data_callback=self._on_memory_data)
         self.memory_command_client = MemoryCommandClient()
         self.control_command_client = ControlCommandClient()
 
@@ -248,36 +256,16 @@ class Instrument:
         print("[Instrument] Red pitaya methods shut down successfully.")
 
     
-    ################ Red Pitaya ADC Data Handling Method ################
+    ################ Red Pitaya ADC Data Handling Methods ################
 
-    def pass_adc_stream_data(self):
-        self.adc1_data = self.adc_stream_client.adc1_data
-        self.adc2_data = self.adc_stream_client.adc2_data
+    def _on_adc_data(self, adc1_data, adc2_data):
+        self.adc1_data = adc1_data
+        self.adc2_data = adc2_data
+
         return self.adc1_data, self.adc2_data
-    
-    
-    ################ Red Pitaya Droplet Data Handling Methods ################
-    
-    def start_memory_stream_handler(self):
-        self._memory_stream_thread_stop = threading.Event()
-        self._memory_stream_thread = threading.Thread(
-            target=self._memory_stream_loop, daemon=True
-        )
-        self._memory_stream_thread.start()
 
-    def _memory_stream_loop(self):
-        while not self._memory_stream_thread_stop.is_set():
-            self.handle_memory_stream_data()
-            time.sleep(0.005)  # 1 ms to avoid CPU overuse; adjust as needed
-
-    def stop_memory_stream_handler(self):
-        if hasattr(self, '_memory_stream_thread_stop'):
-            self._memory_stream_thread_stop.set()
-            self._memory_stream_thread.join()
-    
-    def handle_memory_stream_data(self):
-        cur_droplet_data = self.memory_stream_client.fpgaoutput
-        if not cur_droplet_data:
+    def _on_memory_data(self, fpgaoutput):
+        if not fpgaoutput:
             return
 
         try:
@@ -285,24 +273,24 @@ class Instrument:
 
             # Scalar metadata
             for key in ("droplet_id", "cur_time_us", "droplet_classification"):
-                row[key] = cur_droplet_data[key]
+                row[key] = fpgaoutput[key]
             
             for ch in (0, 1):
                 ch_key = f"CH{ch+1}"
                 _, offset = self.calibration_values[ch_key]
 
                 # Intensity
-                raw_int = cur_droplet_data[f"cur_droplet_intensity[{ch}]"]
+                raw_int = fpgaoutput[f"cur_droplet_intensity[{ch}]"]
                 row[f"cur_droplet_intensity[{ch}]"] = raw_int
                 row[f"cur_droplet_intensity_v[{ch}]"] = (raw_int - offset) / 8192.0
 
                 # Area
-                raw_area = cur_droplet_data[f"cur_droplet_area[{ch}]"]
+                raw_area = fpgaoutput[f"cur_droplet_area[{ch}]"]
                 row[f"cur_droplet_area[{ch}]"] = raw_area
                 row[f"cur_droplet_area_vms[{ch}]"] = raw_area / 8192.0 / 1000.0
 
                 # Width
-                raw_width = cur_droplet_data[f"cur_droplet_width[{ch}]"]
+                raw_width = fpgaoutput[f"cur_droplet_width[{ch}]"]
                 row[f"cur_droplet_width[{ch}]"] = raw_width
                 row[f"cur_droplet_width_ms[{ch}]"] = raw_width / 1000.0
 
@@ -317,37 +305,10 @@ class Instrument:
             print(f"[Instrument] Error parsing droplet data: {e}")
 
         return self.droplet_data
-    
-    
-    def reset_droplet_buffer(self):
-        self.droplet_data = pd.DataFrame()
-
-
-    def _compute_gain_and_offset(self, channel, gain_mode):
-        gain_key = f"FE_{channel}_FS_G_{gain_mode}"
-        offset_key = f"FE_{channel}_DC_offs"
-        gain = self.calib_data[gain_key] 
-        offset = self.calib_data[offset_key]
-        return gain, offset
-
 
     def save_log(self, filename="droplet_log.csv"):
         self.droplet_data.to_csv(filename, index=False)
-    
-    
-    
-    ################ UI Droplet Data Passing Methods ################
-
-    def pass_memory_stream_data(self, 
-                                sort_keys = ["cur_droplet_intensity_v[0]", 
-                                             "cur_droplet_intensity_v[1]"]):
-        
-        self.sort_keys = sort_keys
-        self.droplet_data_key1 = self.droplet_data[sort_keys[0]].values
-        self.droplet_data_key2 = self.droplet_data[sort_keys[1]].values
-        # print("n\data being passed to ui for specific droplet ids")
-        # print(self.droplet_data['droplet_id'])
-        return self.droplet_data_key1, self.droplet_data_key2
+        return None
     
     
     def set_gate_limits(self, limits):
@@ -414,14 +375,9 @@ if __name__ == "__main__":
         script_args=["--verbose", "--very_verbose"],
         rp_dir="piccolo_testing0430",
         verbose=True,
-        very_verbose=False,
+        very_verbose=True,
         debug_flag=True
     )
-
-    print("\n-----------Piccolo Instrument Initialization and Testing-----------")
-    print("[Test] Calibration data recieved:")
-    for var, value in instrument.calib_data.items():
-        print(f"[Test] {var}: {value}")
 
     try:
         print("\n-----------Running Piccolo Instrument-----------")
@@ -451,37 +407,24 @@ if __name__ == "__main__":
 
         for _ in range(1):  # ~1 second if 0.1s stream interval
             time.sleep(0.1)
-            if instrument.adc_stream_client.latest_data:
+            if instrument.adc_stream_client.adc1_data is not None:
                 print("[Test] Received ADC data block.")
                 ch1 = instrument.adc_stream_client.adc1_data
                 ch2 = instrument.adc_stream_client.adc2_data
 
-                print(f"The length of ch1 list is {len(ch1)}")
-                print(f"Ch1 Max: {np.max(ch1):.4f}, Ch2 Max: {np.max(ch2):.4f}")
+                print(f"[Test] The length of ch1 list is {len(ch1)}")
+                print(f"[Test] Ch1 Max: {np.max(ch1):.4f}, Ch2 Max: {np.max(ch2):.4f}")
             else:
                 print("[Test] No data yet.")
 
 
         ############ TESTING MEM STREAM CLIENT ############
         print("\n[Test] Memory Stream Client testing.")
-        
-        if instrument.memory_stream_client.latest_data:
-            with instrument.memory_stream_client.lock:
-                handled_droplet_data = instrument.handle_memory_stream_data()
-                print("[Test] Handled Memory Data:")
-        else:
-            print("[Test] No memory data yet.")
 
-        instrument.start_memory_stream_handler()
-        time.sleep(3)  # Give time for the stream handler to start
         # Read the droplet data buffer
-        instrument.droplet_data
         print(f"[Test] Droplet data buffer length: {len(instrument.droplet_data)}")
         print(instrument.droplet_data.head(30))
-        instrument.save_log("droplet_log_0508.csv")
-
-        # Stop the memory stream handler
-        instrument.stop_memory_stream_handler()
+        instrument.save_log("droplet_log_0512.csv")
 
         
         ############ TESTING MEMORY COMMAND CLIENT ############
