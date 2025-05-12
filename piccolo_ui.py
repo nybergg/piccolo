@@ -387,7 +387,8 @@ class UI:
                 self.boxselect = new
                 self.custom_div.text = self._create_divhtml()
             with self.instrument_lock:
-                self.instrument.set_gate_limits(new)        
+                self.instrument.set_gate_limits(sort_keys = self.sort_keys, 
+                                                limits = dict(new))
         self.source_bx.on_change("data", _boxselect_pass)
         return None
 

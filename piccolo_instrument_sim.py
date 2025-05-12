@@ -36,7 +36,8 @@ class InstrumentSim:
         self.signal = [np.zeros_like(self.time_ms)] * num_channels
         self.drop_arrival_time_ms = np.arange(0, signal_length) * drop_interval_ms
         self.set_threshold(0.03)
-        self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
+        self.set_gate_limits(sort_keys=["cur_droplet_intensity[0]", "cur_droplet_intensity[1]"], 
+                             limits={"x0": 0, "y0": 0, "x1": 0, "y1": 0})
         self.sipm_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_sipm_gain(ch, 0.5)
@@ -178,8 +179,9 @@ class InstrumentSim:
         self.threshold = threshold
         return None
 
-    def set_gate_limits(self, limits):
+    def set_gate_limits(self, sort_keys, limits):
         if self.verbose:
+            print("%s: setting gate limits for %s"%(self.name, sort_keys))
             print("%s: setting gate limits = %s"%(self.name, limits))        
         self.gate_limits = limits
         return None
