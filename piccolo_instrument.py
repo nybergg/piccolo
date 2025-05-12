@@ -311,13 +311,13 @@ class Instrument:
         return None
     
     
-    def set_gate_limits(self, limits):
+    def set_gate_limits(self, sort_keys, limits):
         if self.verbose:
             print(f"[Instrument] Recieved gate limits to set: {limits}")
 
         sort_gates = {}
 
-        for i, key in enumerate(self.sort_keys):
+        for i, key in enumerate(sort_keys):
             # Parse channel index
             ch = int(key[key.find('[')+1:key.find(']')])
             ch_key = f"CH{ch+1}"

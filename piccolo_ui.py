@@ -94,7 +94,6 @@ class UI:
         time.sleep(6)  # Give time for the server to start
         self.instrument.start_clients()
         time.sleep(5)  # Give time for the clients to start
-        self.instrument.start_memory_stream_handler()
 
         # Launch simulation as well
         self.sim = ct.ObjectInSubprocess(InstrumentSim)
@@ -107,7 +106,7 @@ class UI:
        # Setup data sources and UI components:
         with self.instrument_lock:
             with self.sim_lock:
-                self.instrument.pass_adc_stream_data()
+                # self.instrument.pass_adc_stream_data()
                 self._setup_sipm_sources(source0=self.instrument.adc1_data,
                                          source1=self.instrument.adc2_data)
                 self._setup_fpgaout_sources()
@@ -177,7 +176,6 @@ class UI:
             with self.sim_lock:
                 with self.instrument_lock:
                     # Update SiPM data
-                    self.instrument.pass_adc_stream_data()
                     self.sipm.data = {
                         'x': self.sipm.data["x"],
                         'y0': self.instrument.adc1_data,
@@ -185,11 +183,10 @@ class UI:
                     }
 
                     # Update droplet scatter plot from hardware
-                    self.instrument.pass_memory_stream_data(sort_keys = self.sort_keys)
                     self.scatter.data = {
-                        'x': self.instrument.droplet_data_key1,
-                        'y': self.instrument.droplet_data_key2,
-                        'density': np.ones(len(self.instrument.droplet_data_key2)) * 9
+                        'x': self.instrument.droplet_data[self.sort_keys[0]].values,
+                        'y': self.instrument.droplet_data[self.sort_keys[1]].values,
+                        'density': np.ones(len(self.instrument.droplet_data)) * 9
                     }
 
         else:
@@ -384,7 +381,8 @@ class UI:
             with self.sim_lock:
                 print("Box Select Callback Triggered")
                 # Pass box values sim through the pipe to set gate values:
-                self.sim.set_gate_limits(dict(new))
+                self.sim.set_gate_limits(sort_keys = self.sort_keys, 
+                                         limits = dict(new))
                 # Store box values in ui box_select and update box select text:
                 self.boxselect = new
                 self.custom_div.text = self._create_divhtml()
