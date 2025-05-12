@@ -69,7 +69,6 @@ class ADCStreamClient(BaseClient):
         self.lock = threading.Lock()
 
     def _run(self):
-        message = struct.pack("I", 3).ljust(16, b'\x00')
         n_channels = 2
         buffer_size = 4096 
         mem_size = 4
@@ -77,7 +76,6 @@ class ADCStreamClient(BaseClient):
 
         try:
             while not self.stop_flag.is_set():
-                self.sock.sendall(message)
                 data = recv_data(self.sock, packet_size)
                 if data:
                     with self.lock:
