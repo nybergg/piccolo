@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import threading
 import time
+import pandas as pd
 
 # Third party imports, installable via pip:
 # -> bokeh graphics and features etc
@@ -64,79 +65,49 @@ class UI:
             self._init_sim()
         else:  
             self._init_hw()
+
+        self._init_ui()
+        self._run_ui()
         
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
     def _init_sim(self):
-        # Run CPU intensive InstrumentSim in subprocess:
+        # Initialize InstrumentSim in subprocess:
         self.sim = ct.ObjectInSubprocess(InstrumentSim)
-        self.sim_lock = threading.Lock()
-        # Initialize UI components:
-        with self.sim_lock:
-            self._setup_sipm_sources()
-            self._setup_fpgaout_sources()
-            self._setup_ui_components()
-            # update ui every 150ms:
-            self.timers = np.zeros(100)
-            self.doc.add_periodic_callback(self._update_ui, 150)
+        self.lock = threading.Lock()
+        self.sim.start_generating()
+        if self.verbose:
+            print("%s: -> simulation initialized"%self.name)
         return None
     
     def _init_hw(self):
-        if self.verbose:
-            print("%s: initializing hardware"%self.name)
-        
         # Launch piccolo instrument:
         self.instrument = Instrument(rp_dir="piccolo_testing0505", verbose=True)
-        self.instrument_lock = threading.Lock()
+        self.lock = threading.Lock()
         self.instrument.launch_piccolo_rp()
         time.sleep(6)  # Give time for the server to start
         self.instrument.start_clients()
         time.sleep(5)  # Give time for the clients to start
-
-        # Launch simulation as well
-        self.sim = ct.ObjectInSubprocess(InstrumentSim)
-        self.sim_lock = threading.Lock()
-        # Initialize UI components:
-        
         if self.verbose:
             print("%s: -> hardware initialized"%self.name)
-
+    
+    def _init_ui(self):
        # Setup data sources and UI components:
-        with self.instrument_lock:
-            with self.sim_lock:
-                # self.instrument.pass_adc_stream_data()
-                self._setup_sipm_sources()
-                self._setup_fpgaout_sources()
-                self._setup_ui_components()
-                
-                # update ui every 150ms:
-                self.timers = np.zeros(100)
-                self.doc.add_periodic_callback(self._update_ui, 100)
+        with self.lock:
+            self._setup_ui_sources()
+            self._setup_ui_components()
+            self.timers = np.zeros(100)
         return None
 
-    def _setup_sipm_sources(self):
-        # Initialize data sources for the generated data (s to ms):
-        time_ms = np.linspace(0, 50, 4096)
-        if self.simulate:
-            self.sipm = ColumnDataSource(data={'x':time_ms,
-                                               'y0':self.sim.signal[0],
-                                               'y1':self.sim.signal[1]
-                                                })
-        else:
-            self.sipm = ColumnDataSource(data={'x':time_ms,
-                                               'y0':self.instrument.adc1_data,
-                                               'y1':self.instrument.adc2_data
-                                                })
+    def _run_ui(self):
+        self.doc.add_periodic_callback(self._update_ui, 100)
         return None
 
-    def _setup_fpgaout_sources(self):
-        # Initialize data sources for the generated data (s to ms):
-        if self.simulate:
-            self.scatter = ColumnDataSource(data=self.sim.droplet_data)
-        else:
-            self.scatter = ColumnDataSource(data={"x": [], "y": [], "density": []})
-        # Initialize data sources for the interactive callbacks:
+    def _setup_ui_sources(self):
+        # Initialize data sources for the plots and interactive callbacks:
+        self.scatter = ColumnDataSource(pd.DataFrame(columns=['x', 'y', 'density']))
+        self.sipm = ColumnDataSource(pd.DataFrame(columns=['x', 'y0', 'y1']))
         self.thresh = 0.05
         self.buffer_length = 5000
         self.boxselect = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
@@ -150,7 +121,6 @@ class UI:
                            text="Update Rate: 0 Hz",
                            text_font_size="20pt",
                            text_color="black")
-        self._create_button()
         self._create_sliders()
         self._create_bufferspinner()
         self._create_custom_div()
@@ -159,7 +129,6 @@ class UI:
         # Generate Layout:
         self.doc.add_root(
             column(
-                self.button,
                 row(
                     column(
                         self.sliders[0],
@@ -177,38 +146,35 @@ class UI:
     
     def _update_ui(self):
         # Pull data from subprocess and update the data sources and plots
-        if not self.simulate:
-            with self.sim_lock:
-                with self.instrument_lock:
-                    # Update SiPM data
-                    self.sipm.data = {
-                        'x': self.sipm.data["x"],
-                        'y0': self.instrument.adc1_data,
-                        'y1': self.instrument.adc2_data
-                    }
-
-                    # Update droplet scatter plot from hardware
-                    self.scatter.data = {
-                        'x': self.instrument.droplet_data[self.sort_keys[0]].values,
-                        'y': self.instrument.droplet_data[self.sort_keys[1]].values,
-                        'density': np.ones(len(self.instrument.droplet_data)) * 9
-                    }
-
-        else:
-            with self.sim_lock:
+        with self.lock:
+            if self.simulate:
                 # Update SiPM simulation data
                 self.sipm.data = {
-                        'x': self.sipm.data["x"],
-                        'y0': self.sim.signal[0],
-                        'y1': self.sim.signal[1]
+                        'x':    np.linspace(0, 50, 4096),
+                        'y0':   self.sim.signal[0],
+                        'y1':   self.sim.signal[1]
                     }
                 # Update droplet scatter plot from simulation
                 self.scatter.data = {
-                        'x': self.sim.droplet_data["x"].values,
-                        'y': self.sim.droplet_data["y"].values,
-                        'density': self.sim.droplet_data["density"].values
+                        'x':        self.sim.droplet_data["x"].values,
+                        'y':        self.sim.droplet_data["y"].values,
+                        'density':  self.sim.droplet_data["density"].values
                     }
-                # self._update_scatter_source_sim()
+            else:
+                # Update SiPM data
+                self.sipm.data = {
+                    'x':    np.linspace(0, 50, 4096),
+                    'y0':   self.instrument.adc1_data,
+                    'y1':   self.instrument.adc2_data
+                }
+
+                # Update droplet scatter plot from hardware
+                self.scatter.data = {
+                    'x':        self.instrument.droplet_data[self.sort_keys[0]].values,
+                    'y':        self.instrument.droplet_data[self.sort_keys[1]].values,
+                    'density':  np.ones(len(self.instrument.droplet_data)) * 9
+                }
+
 
         # Update timing label
         self.timers = np.roll(self.timers, 1)
@@ -218,35 +184,17 @@ class UI:
             f"Update Rate: {1/s_per_update:.01f} Hz"
             f" ({s_per_update*1000:.00f} ms)")
         
-    
-    def _create_button(self):
-        def _update_toggle(state):
-            with self.sim_lock:
-                if state:
-                    self.button.label = "Stop"
-                    self.button.button_type = "danger"
-                    self.sim.start_generating()
-                else:
-                    self.button.label = "Start"
-                    self.button.button_type = "success"
-                    self.sim.stop_generating()        
-        self.button = Toggle(label="Start", button_type="success")
-        self.button.on_click(_update_toggle)
-        return None
 
     def _create_sliders(self):
         def _gain0_changed(attr, old, new):
-            with self.sim_lock:
-                self.sim.set_sipm_gain(0, new)
+            self.sim.set_sipm_gain(0, new)
             return None
         def _gain1_changed(attr, old, new):
-            with self.sim_lock:
-                self.sim.set_sipm_gain(1, new)
+            self.sim.set_sipm_gain(1, new)
             return None
         def _threshold_changed(attr, old, new):
-            with self.sim_lock:
-                self.sim.set_threshold(new)
-                self.thresh_line.location = self.sliders[2].value
+            self.sim.set_threshold(new)
+            self.thresh_line.location = self.sliders[2].value
             return None
         slider_margin = (10, 10, 20, 50)
         sliders_info = [
@@ -295,8 +243,8 @@ class UI:
 
     def _create_bufferspinner(self):
         def _spinner_changed(attr, old, new):
-            with self.sim_lock:
-                self.buffer_length = self.bufferspinner.value
+            with self.lock:
+                self.sim.buffer_length = self.bufferspinner.value
             return None
         self.bufferspinner = Spinner(
             title="Datapoint Count for Scatter Plot",
@@ -339,7 +287,7 @@ class UI:
             "y",
             source=self.scatter,
             size=2,
-            color='black', #{"field": "density", "transform": color_mapper},
+            color={"field": "density", "transform": color_mapper},
             line_color=None,
             fill_alpha=0.6,
             )
@@ -378,7 +326,7 @@ class UI:
         def _boxselect_pass(attr, old, new):
             print(f"Box select: {new}")
             print(f"Dict: {dict(new)}")
-            with self.sim_lock:
+            with self.lock:
                 print("Box Select Callback Triggered")
                 # Pass box values sim through the pipe to set gate values:
                 self.sim.set_gate_limits(sort_keys = self.sort_keys, 
@@ -459,11 +407,7 @@ class UI:
         </div>
         """
         return html_content
-    
-    def _shutdown_hw(self):
-        self.instrument.stop_clients()
-        time.sleep(1)  # Give time for the clients to stop
-        self.instrument.stop_servers()
+            
 
 # -> Edit args and kwargs here for test block:
 def func(doc): # get instance of class WITH args and kwargs
