@@ -530,7 +530,6 @@ class PiccoloRP:
         """ TCP server that streams fpga outputs """
         
         # Continuously stream FPGA outputs to the client
-        # TODO: consider running this in it's own thread to mirror the ADC server
         try:
             while True:
                 self.get_all()
@@ -614,7 +613,6 @@ if __name__ == "__main__":
     # piccolo._initialize_csv()
     # piccolo.start_logging()
     # print("Logging test completed.")
-
     
     # Test the memory mapping and reading/writing
     print("--------Testing memory mapping--------")
@@ -642,15 +640,12 @@ if __name__ == "__main__":
     piccolo.get_all()
     print("Reset variables to defaults")
 
-
     print("--------Testing continuous get all--------")
     for _ in range(30):
         fpga_vars = piccolo.get_all()
         val = fpga_vars['droplet_id']
         print(f"Cur Droplet ID:{val}")
         time.sleep(0.0001)
-
-
 
     print("\n////////// All Red Pitaya Testing Complete ///////////")
 

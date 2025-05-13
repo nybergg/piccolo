@@ -168,9 +168,7 @@ class InstrumentSim:
                 auc_1 = [x if x > 0 else 0.001 for x in auc_1]
                 auc_2 = [x if x > 0 else 0.001 for x in auc_2]
                 if np.size(auc_1) > 2:
-                    xy = np.vstack([np.log(auc_1), np.log(auc_2)])
-                    density = gaussian_kde(xy)(xy)
-                    cur_droplet_data = {"x": auc_1, "y": auc_2, "density": density}
+                    cur_droplet_data = {"x": auc_1, "y": auc_2}
                     self._on_memory_data(fpgaoutput=cur_droplet_data)
         if self.very_verbose:
             print("\n%s: -> done analysing drops"%self.name)

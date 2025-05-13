@@ -19,6 +19,7 @@ from bokeh.models import (
     Spinner,
     Div,
     )
+from bokeh.palettes import Viridis256
 from bokeh.models.callbacks import CustomJS
 from bokeh.plotting import curdoc, figure
 from bokeh.events import SelectionGeometry
@@ -109,7 +110,7 @@ class UI:
         self.scatter = ColumnDataSource(pd.DataFrame(columns=['x', 'y', 'density']))
         self.sipm = ColumnDataSource(pd.DataFrame(columns=['x', 'y0', 'y1']))
         self.thresh = 0.05
-        self.buffer_length = 5000
+        self.buffer_length = 10000
         self.boxselect = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
         self.source_bx = ColumnDataSource(data=self.boxselect)
         return None
@@ -155,11 +156,9 @@ class UI:
                         'y1':   self.sim.signal[1]
                     }
                 # Update droplet scatter plot from simulation
-                self.scatter.data = {
-                        'x':        self.sim.droplet_data["x"].values,
-                        'y':        self.sim.droplet_data["y"].values,
-                        'density':  self.sim.droplet_data["density"].values
-                    }
+                x = self.sim.droplet_data["x"].values
+                y = self.sim.droplet_data["y"].values
+                
             else:
                 # Update SiPM data
                 self.sipm.data = {
@@ -169,11 +168,32 @@ class UI:
                 }
 
                 # Update droplet scatter plot from hardware
-                self.scatter.data = {
-                    'x':        self.instrument.droplet_data[self.sort_keys[0]].values,
-                    'y':        self.instrument.droplet_data[self.sort_keys[1]].values,
-                    'density':  np.ones(len(self.instrument.droplet_data)) * 9
-                }
+                x = self.instrument.droplet_data[self.sort_keys[0]].values
+                y = self.instrument.droplet_data[self.sort_keys[1]].values
+                
+
+            # Measure density for scatter plot
+            bins = 25 
+            H, xedges, yedges = np.histogram2d(x, 
+                                               y, 
+                                               bins=bins)
+            ix = np.searchsorted(xedges, x, side='right') - 1
+            iy = np.searchsorted(yedges, y, side='right') - 1
+            ix = np.clip(ix, 0, bins-1)
+            iy = np.clip(iy, 0, bins-1)
+            density = H[ix, iy]
+            # print(f"Density from ui: {density}")
+
+            # Set source for scatter plot with density
+            self.scatter.data = {
+                'x': x,
+                'y': y,
+                'density': density
+            }
+    
+            # Update density mapper
+            self._density_mapper.low = float(density.min())
+            self._density_mapper.high = float(density.max())
 
 
         # Update timing label
@@ -269,7 +289,12 @@ class UI:
         return None
 
     def _create_2d_scatter_plot(self):
-        color_mapper = LinearColorMapper(palette="Viridis256")
+        
+        self._density_mapper = LinearColorMapper(
+            palette=Viridis256,
+            low=float(0),
+            high=float(1)
+            )
         self.plot2d = figure(
             height=400,
             width=450,
@@ -287,7 +312,7 @@ class UI:
             "y",
             source=self.scatter,
             size=2,
-            color={"field": "density", "transform": color_mapper},
+            fill_color={"field": "density", "transform": self._density_mapper},
             line_color=None,
             fill_alpha=0.6,
             )
@@ -328,14 +353,15 @@ class UI:
             print(f"Dict: {dict(new)}")
             with self.lock:
                 print("Box Select Callback Triggered")
-                # Pass box values sim through the pipe to set gate values:
-                self.sim.set_gate_limits(sort_keys = self.sort_keys, 
-                                         limits = dict(new))
+                
                 # Store box values in ui box_select and update box select text:
                 self.boxselect = new
                 self.custom_div.text = self._create_divhtml()
-            with self.instrument_lock:
-                self.instrument.set_gate_limits(sort_keys = self.sort_keys, 
+                if self.simulate:
+                    self.sim.set_gate_limits(sort_keys = self.sort_keys, 
+                                            limits = dict(new))
+                else:
+                    self.instrument.set_gate_limits(sort_keys = self.sort_keys, 
                                                 limits = dict(new))
         self.source_bx.on_change("data", _boxselect_pass)
         return None
@@ -411,7 +437,7 @@ class UI:
 
 # -> Edit args and kwargs here for test block:
 def func(doc): # get instance of class WITH args and kwargs
-    bk_doc = UI(doc, sys, simulate=True, verbose=True)
+    bk_doc = UI(doc, sys, simulate=False, verbose=True)
     return bk_doc
 
 if __name__ == '__main__':
