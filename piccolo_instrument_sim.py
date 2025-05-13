@@ -42,8 +42,8 @@ class InstrumentSim:
         self.sipm_gain = np.zeros(num_channels)
         for ch in range(num_channels):
             self.set_sipm_gain(ch, 0.5)
-        self.droplet_data = pd.DataFrame(columns=['x', 'y', 'density'])
-        self.buffer_size = 1000
+        self.droplet_data = pd.DataFrame()
+        self.buffer_length = 1000
         self._running = False
         if self.verbose:
             print("%s: -> open and ready."%self.name)
@@ -182,8 +182,8 @@ class InstrumentSim:
         self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame(fpgaoutput)], ignore_index=True)
 
         # Maintain rolling size
-        if len(self.droplet_data) > self.buffer_size:
-            self.droplet_data = self.droplet_data.iloc[-self.buffer_size:]
+        if len(self.droplet_data) > self.buffer_length:
+            self.droplet_data = self.droplet_data.iloc[-self.buffer_length:]
 
         return self.droplet_data
 
