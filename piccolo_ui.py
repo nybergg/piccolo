@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import threading
 import time
+import pandas as pd
 
 # Third party imports, installable via pip:
 # -> bokeh graphics and features etc
@@ -18,6 +19,7 @@ from bokeh.models import (
     Spinner,
     Div,
     )
+from bokeh.palettes import Viridis256
 from bokeh.models.callbacks import CustomJS
 from bokeh.plotting import curdoc, figure
 from bokeh.events import SelectionGeometry
@@ -28,7 +30,8 @@ from bokeh.server.server import Server
 
 # Our code, one .py file per module, copy files to your local directory:
 import concurrency_tools as ct  # github.com/AndrewGYork/tools
-from piccolo_instrument_sim import DataGenerator # github.com/nybergg/piccolo
+from piccolo_instrument_sim import InstrumentSim # github.com/nybergg/piccolo
+from piccolo_instrument import Instrument # github.com/nybergg/piccolo
 
 class UI:
     def __init__(self,
@@ -37,11 +40,16 @@ class UI:
                  name='Piccolo_ui',
                  simulate=False,
                  verbose=True):
+        
         self.doc = doc
         self.name = name
         self.verbose = verbose
+
+        self.sort_keys = ["cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]"]
+        
         if self.verbose:
             print("%s: opening..."%self.name)
+        
         # Detect if browser is closed:
         def _session_destroyed(session_context):
             if self.verbose:
@@ -49,67 +57,60 @@ class UI:
                     self.name, session_context.destroyed))
             sys.exit()
             return None
+        
         self.doc.on_session_destroyed(_session_destroyed)
-        # create launch buttons for hardware and sim:
+        
+        # Initialize simulation or hardware:
+        self.simulate = simulate
         if simulate:
             self._init_sim()
-        else:
+        else:  
             self._init_hw()
+
+        self._init_ui()
+        self._run_ui()
+        
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
-    def _init_hw(self):
-        if self.verbose:
-            print("%s: initializing hardware"%self.name)
-        return None
-
     def _init_sim(self):
-        def _update_ui():
-            # Pull data from subprocess and update the datasource and plot:
-            with self.dg_lock:
-                # Update pmt data:
-                self.source_PMT0.data = {'x':self.dg.time_ms,
-                                         'y':self.dg.signal[0]}
-                self.source_PMT1.data = {'x':self.dg.time_ms,
-                                         'y':self.dg.signal[1]}
-                for key in self.rolling_source_2d:
-                    self.rolling_source_2d[key].extend(self.dg.data2d[key])
-                    if self.buffer_length == 0:
-                        self.rolling_source_2d[key] = [np.nan]
-                    elif len(self.rolling_source_2d[key]) > self.buffer_length:
-                        self.rolling_source_2d[key] = (
-                            self.rolling_source_2d[key][-self.buffer_length:])
-                self.source_2d.data = self.rolling_source_2d
-                # time update and display:
-                self.timers = np.roll(self.timers, 1)
-                self.timers[0] = time.perf_counter()
-                s_per_update = np.mean(np.diff(self.timers)) * -1
-                self.plot.title.text = (
-                    f"Update Rate: {1/s_per_update:.01f} Hz"
-                    f" ({s_per_update*1000:.00f} ms)")
-        # Run CPU intensive DataGenerator in subprocess:
-        self.dg = ct.ObjectInSubprocess(DataGenerator)
-        self.dg_lock = threading.Lock()
-        # Initialize UI components:
-        with self.dg_lock:
-            self._setup_data_sources()
-            self._setup_ui_components()
-            # update ui every 150ms:
+        # Initialize InstrumentSim in subprocess:
+        self.sim = ct.ObjectInSubprocess(InstrumentSim)
+        self.lock = threading.Lock()
+        self.sim.start_generating()
+        if self.verbose:
+            print("%s: -> simulation initialized"%self.name)
+        return None
+    
+    def _init_hw(self):
+        # Launch piccolo instrument:
+        self.instrument = Instrument(rp_dir="piccolo_testing", verbose=False, very_verbose=False)
+        self.lock = threading.Lock()
+        self.instrument.launch_piccolo_rp()
+        time.sleep(6)  # Give time for the server to start
+        self.instrument.start_clients()
+        time.sleep(5)  # Give time for the clients to start
+        if self.verbose:
+            print("%s: -> hardware initialized"%self.name)
+    
+    def _init_ui(self):
+       # Setup data sources and UI components:
+        with self.lock:
+            self._setup_ui_sources()
+            self._setup_ui_components() 
             self.timers = np.zeros(100)
-            self.doc.add_periodic_callback(_update_ui, 150)
         return None
 
-    def _setup_data_sources(self):
-        # Initialize data sources for the generated data (s to ms):
-        self.source_PMT0 = ColumnDataSource(data={'x':self.dg.time_ms,
-                                                  'y':self.dg.signal[0]})
-        self.source_PMT1 = ColumnDataSource(data={'x':self.dg.time_ms,
-                                                  'y':self.dg.signal[1]})
-        self.source_2d = ColumnDataSource(data=self.dg.data2d)
-        self.rolling_source_2d = self.dg.data2d.copy()
-        # Initialize data sources for the interactive callbacks:
+    def _run_ui(self):
+        self.doc.add_periodic_callback(self._update_ui, 200)
+        return None
+
+    def _setup_ui_sources(self):
+        # Initialize data sources for the plots and interactive callbacks:
+        self.scatter = ColumnDataSource(pd.DataFrame(columns=['x', 'y', 'density']))
+        self.sipm = ColumnDataSource(pd.DataFrame(columns=['x', 'y0', 'y1']))
         self.thresh = 0.05
-        self.buffer_length = 5000
+        self.buffer_length = 10000
         self.boxselect = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
         self.source_bx = ColumnDataSource(data=self.boxselect)
         return None
@@ -121,7 +122,6 @@ class UI:
                            text="Update Rate: 0 Hz",
                            text_font_size="20pt",
                            text_color="black")
-        self._create_button()
         self._create_sliders()
         self._create_bufferspinner()
         self._create_custom_div()
@@ -130,7 +130,6 @@ class UI:
         # Generate Layout:
         self.doc.add_root(
             column(
-                self.button,
                 row(
                     column(
                         self.sliders[0],
@@ -145,35 +144,81 @@ class UI:
                 )
             )
         return None
+    
+    def _update_ui(self):
+        # Pull data from subprocess and update the data sources and plots
+        with self.lock:
+            if self.simulate:
+                # Update SiPM simulation data
+                self.sipm.data = {
+                        'x':    np.linspace(0, 50, 4096),
+                        'y0':   self.sim.signal[0],
+                        'y1':   self.sim.signal[1]
+                    }
+                # Update droplet scatter plot from simulation
+                x = self.sim.droplet_data["x"].values
+                y = self.sim.droplet_data["y"].values
+                
+            else:
+                # Update SiPM data
+                self.sipm.data = {
+                    'x':    np.linspace(0, 50, 4096),
+                    'y0':   self.instrument.adc1_data,
+                    'y1':   self.instrument.adc2_data
+                }
 
-    def _create_button(self):
-        def _update_toggle(state):
-            with self.dg_lock:
-                if state:
-                    self.button.label = "Stop"
-                    self.button.button_type = "danger"
-                    self.dg.start_generating()
-                else:
-                    self.button.label = "Start"
-                    self.button.button_type = "success"
-                    self.dg.stop_generating()        
-        self.button = Toggle(label="Start", button_type="success")
-        self.button.on_click(_update_toggle)
-        return None
+                # Update droplet scatter plot from hardware
+                x = self.instrument.droplet_data[self.sort_keys[0]].values
+                y = self.instrument.droplet_data[self.sort_keys[1]].values
+                
+
+            # Measure density for scatter plot
+            bins = 25 
+            H, xedges, yedges = np.histogram2d(x, 
+                                               y, 
+                                               bins=bins)
+            ix = np.searchsorted(xedges, x, side='right') - 1
+            iy = np.searchsorted(yedges, y, side='right') - 1
+            ix = np.clip(ix, 0, bins-1)
+            iy = np.clip(iy, 0, bins-1)
+            density = H[ix, iy]
+            # print(f"Density from ui: {density}")
+
+            # Set source for scatter plot with density
+            self.scatter.data = {
+                'x': x,
+                'y': y,
+                'density': density
+            }
+    
+            # Update density mapper
+            self._density_mapper.low = float(density.min())
+            self._density_mapper.high = float(density.max())
+
+
+        # Update timing label
+        self.timers = np.roll(self.timers, 1)
+        self.timers[0] = time.perf_counter()
+        s_per_update = np.mean(np.diff(self.timers)) * -1
+        self.plot.title.text = (
+            f"Update Rate: {1/s_per_update:.01f} Hz"
+            f" ({s_per_update*1000:.00f} ms)")
+        
 
     def _create_sliders(self):
         def _gain0_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_pmt_gain(0, new)
+            self.sim.set_sipm_gain(0, new)
             return None
         def _gain1_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_pmt_gain(1, new)
+            self.sim.set_sipm_gain(1, new)
             return None
         def _threshold_changed(attr, old, new):
-            with self.dg_lock:
-                self.dg.set_threshold(new)
-                self.thresh_line.location = self.sliders[2].value
+            with self.lock:
+                if self.simulate:
+                    self.sim.set_threshold(new)
+                else:
+                    self.instrument.set_detection_threshold(thresh=new, thresh_key="min_intensity_thresh[0]")
+            self.thresh_line.location = self.sliders[2].value
             return None
         slider_margin = (10, 10, 20, 50)
         sliders_info = [
@@ -182,7 +227,7 @@ class UI:
                 "end": 1,
                 "value": 0.5,
                 "step": 0.01,
-                "title": "PMT 0 Gain",
+                "title": "SiPM 0 Gain",
                 "bar_color": "mediumseagreen",
                 "callback": _gain0_changed,
             },
@@ -191,7 +236,7 @@ class UI:
                 "end": 1,
                 "value": 0.5,
                 "step": 0.01,
-                "title": "PMT 1 Gain",
+                "title": "SiPM 1 Gain",
                 "bar_color": "royalblue",
                 "callback": _gain1_changed,
             },
@@ -200,7 +245,7 @@ class UI:
                 "end": 2,
                 "value": self.thresh,
                 "step": 0.01,
-                "title": "PMT 0 Threshold",
+                "title": "SiPM 0 Threshold",
                 "bar_color": "mediumseagreen",
                 "callback": _threshold_changed,
             },
@@ -222,8 +267,8 @@ class UI:
 
     def _create_bufferspinner(self):
         def _spinner_changed(attr, old, new):
-            with self.dg_lock:
-                self.buffer_length = self.bufferspinner.value
+            with self.lock:
+                self.sim.buffer_length = self.bufferspinner.value
             return None
         self.bufferspinner = Spinner(
             title="Datapoint Count for Scatter Plot",
@@ -248,14 +293,19 @@ class UI:
         return None
 
     def _create_2d_scatter_plot(self):
-        color_mapper = LinearColorMapper(palette="Viridis256")
+        
+        self._density_mapper = LinearColorMapper(
+            palette=Viridis256,
+            low=float(0),
+            high=float(1)
+            )
         self.plot2d = figure(
             height=400,
             width=450,
             x_axis_label="Channel 1 AUC",
             y_axis_label="Channel 2 AUC",
-            x_range=(1e3, 1e6),
-            y_range=(1e3, 1e6),
+            x_range=(1e-2, 1e1),
+            y_range=(1e-2, 1e1),
             x_axis_type="log",
             y_axis_type="log",
             title="Density Scatter Plot",
@@ -264,9 +314,9 @@ class UI:
         glyph = self.plot2d.scatter(
             "x",
             "y",
-            source=self.source_2d,
+            source=self.scatter,
             size=2,
-            color={"field": "density", "transform": color_mapper},
+            fill_color={"field": "density", "transform": self._density_mapper},
             line_color=None,
             fill_alpha=0.6,
             )
@@ -303,13 +353,20 @@ class UI:
         # Attach Javascript and callback to plot for 'selectiongeometry' event:
         self.plot2d.js_on_event(SelectionGeometry, callback)
         def _boxselect_pass(attr, old, new):
-            with self.dg_lock:
+            print(f"Box select: {new}")
+            print(f"Dict: {dict(new)}")
+            with self.lock:
                 print("Box Select Callback Triggered")
-                # Pass box values sim through the pipe to set gate values:
-                self.dg.set_gate_limits(dict(new))
+                
                 # Store box values in ui box_select and update box select text:
                 self.boxselect = new
-                self.custom_div.text = self._create_divhtml()        
+                self.custom_div.text = self._create_divhtml()
+                if self.simulate:
+                    self.sim.set_gate_limits(sort_keys = self.sort_keys, 
+                                            limits = dict(new))
+                else:
+                    self.instrument.set_gate_limits(sort_keys = self.sort_keys, 
+                                                limits = dict(new))
         self.source_bx.on_change("data", _boxselect_pass)
         return None
 
@@ -317,7 +374,7 @@ class UI:
         self.plot = figure(
             height=300,
             width=900,
-            title="Generated PMT Data",
+            title="Generated SiPM Data",
             x_axis_label="Time(ms)",
             y_axis_label="Voltage",
             toolbar_location=None,
@@ -327,17 +384,17 @@ class UI:
             )
         self.plot.line(
             "x",
-            "y",
-            source=self.source_PMT0,
+            "y0",
+            source=self.sipm,
             color="mediumseagreen",
-            legend_label="PMT0",
+            legend_label="SiPM0",
             )
         self.plot.line(
             "x",
-            "y",
-            source=self.source_PMT1,
+            "y1",
+            source=self.sipm,
             color="royalblue",
-            legend_label="PMT1"
+            legend_label="SiPM1"
             )
         # create threshold lines:
         self.thresh_line = Span(
@@ -380,10 +437,11 @@ class UI:
         </div>
         """
         return html_content
+            
 
 # -> Edit args and kwargs here for test block:
 def func(doc): # get instance of class WITH args and kwargs
-    bk_doc = UI(doc, sys, simulate=True, verbose=True)
+    bk_doc = UI(doc, sys, simulate=False, verbose=True)
     return bk_doc
 
 if __name__ == '__main__':

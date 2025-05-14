@@ -1,16 +1,17 @@
 # Imports from the python standard library:
 import numpy as np
 import threading
+import pandas as pd
 
 # Third party imports, installable via pip:
 from scipy.integrate import simpson
 from scipy.signal import find_peaks, peak_widths
 from scipy.stats import gaussian_kde
 
-class DataGenerator:
+class InstrumentSim:
     def __init__(self,
                  num_channels=2,
-                 signal_duration_ms=100,
+                 signal_length=4096,
                  sampling_interval_ms=0.02,
                  drop_interval_ms=1,
                  drop_width_ms=0.2,
@@ -32,17 +33,17 @@ class DataGenerator:
         # init:
         if self.verbose:
             print("%s: opening..."%self.name)
-        self.time_ms = np.arange(
-            0, self.signal_duration_ms, self.sampling_interval_ms)
+        self.time_ms = np.arange(0, signal_length) * sampling_interval_ms
         self.signal = [np.zeros_like(self.time_ms)] * num_channels
-        self.drop_arrival_time_ms = np.arange(
-            0, self.signal_duration_ms, self.drop_interval_ms)
+        self.drop_arrival_time_ms = np.arange(0, signal_length) * drop_interval_ms
         self.set_threshold(0.03)
-        self.set_gate_limits({"x0": 0, "y0": 0, "x1": 0, "y1": 0})
-        self.pmt_gain = np.zeros(num_channels)
+        self.set_gate_limits(sort_keys=["cur_droplet_intensity[0]", "cur_droplet_intensity[1]"], 
+                             limits={"x0": 0, "y0": 0, "x1": 0, "y1": 0})
+        self.sipm_gain = np.zeros(num_channels)
         for ch in range(num_channels):
-            self.set_pmt_gain(ch, 0.5)
-        self.data2d = {"x": [0], "y": [0], "density": [0]}
+            self.set_sipm_gain(ch, 0.5)
+        self.droplet_data = pd.DataFrame()
+        self.buffer_length = 1000
         self._running = False
         if self.verbose:
             print("%s: -> open and ready."%self.name)
@@ -75,7 +76,7 @@ class DataGenerator:
                                               scale=self.signal_baseline_cv,
                                               size=len(self.time_ms))            
             # Combine signals for this channel:
-            self.signal[ch] = (signal + baseline_noise) * self.pmt_gain[ch]
+            self.signal[ch] = (signal + baseline_noise) * self.sipm_gain[ch]
         if self.very_verbose:
             print("\n%s: -> done generating signal"%self.name)            
         return None
@@ -83,7 +84,7 @@ class DataGenerator:
     def _analyze_drops(self, ch=1):
         if self.very_verbose:
             print("\n%s: analyzing drops"%self.name)
-        # Analyze Drop Parameters from PMT Signals:
+        # Analyze Drop Parameters from sipm Signals:
         # Find drops based on the signal and threshold of the specified channel:
         drops, _ = find_peaks(self.signal[ch], height=self.threshold)
         if np.any(drops) == False:
@@ -148,7 +149,7 @@ class DataGenerator:
                         results["timestamp"].append(drop_time)
                         results["width"].append(drop_width)
                         results["max signal"].append(max_signal)
-                        results["auc"].append(auc * 1e6)
+                        results["auc"].append(auc)
                         results["fwhm"].append(fwhm)
                         results["baseline"].append(baseline)
                 # Calculate density measurement for the density scatter plot:
@@ -167,12 +168,22 @@ class DataGenerator:
                 auc_1 = [x if x > 0 else 0.001 for x in auc_1]
                 auc_2 = [x if x > 0 else 0.001 for x in auc_2]
                 if np.size(auc_1) > 2:
-                    xy = np.vstack([np.log(auc_1), np.log(auc_2)])
-                    density = gaussian_kde(xy)(xy)
-                    self.data2d = {"x": auc_1, "y": auc_2, "density": density}
+                    cur_droplet_data = {"x": auc_1, "y": auc_2}
+                    self._on_memory_data(fpgaoutput=cur_droplet_data)
         if self.very_verbose:
             print("\n%s: -> done analysing drops"%self.name)
         return None
+    
+    def _on_memory_data(self, fpgaoutput):
+
+        # Append to DataFrame
+        self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame(fpgaoutput)], ignore_index=True)
+
+        # Maintain rolling size
+        if len(self.droplet_data) > self.buffer_length:
+            self.droplet_data = self.droplet_data.iloc[-self.buffer_length:]
+
+        return self.droplet_data
 
     def set_threshold(self, threshold):
         if self.verbose:
@@ -180,16 +191,17 @@ class DataGenerator:
         self.threshold = threshold
         return None
 
-    def set_gate_limits(self, limits):
+    def set_gate_limits(self, sort_keys, limits):
         if self.verbose:
+            print("%s: setting gate limits for %s"%(self.name, sort_keys))
             print("%s: setting gate limits = %s"%(self.name, limits))        
         self.gate_limits = limits
         return None
 
-    def set_pmt_gain(self, ch, gain):
+    def set_sipm_gain(self, ch, gain):
         if self.verbose:
-            print("%s(ch%s): setting pmt gain = %s"%(self.name, ch, gain))
-        self.pmt_gain[ch] = gain
+            print("%s(ch%s): setting sipm gain = %s"%(self.name, ch, gain))
+        self.sipm_gain[ch] = gain
         return None
 
     def start_generating(self):
@@ -210,7 +222,7 @@ class DataGenerator:
 
 if __name__ == "__main__":
     import time
-    dg = DataGenerator(verbose=True, very_verbose=True)
+    dg = InstrumentSim(verbose=True, very_verbose=True)
     dg.start_generating()
     time.sleep(0.5) # run for a bit
     input('\nhit enter to continue')
