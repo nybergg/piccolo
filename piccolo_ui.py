@@ -84,7 +84,7 @@ class UI:
     
     def _init_hw(self):
         # Launch piccolo instrument:
-        self.instrument = Instrument(rp_dir="piccolo_testing0505", verbose=True)
+        self.instrument = Instrument(rp_dir="piccolo_testing", verbose=False, very_verbose=False)
         self.lock = threading.Lock()
         self.instrument.launch_piccolo_rp()
         time.sleep(6)  # Give time for the server to start
@@ -97,12 +97,12 @@ class UI:
        # Setup data sources and UI components:
         with self.lock:
             self._setup_ui_sources()
-            self._setup_ui_components()
+            self._setup_ui_components() 
             self.timers = np.zeros(100)
         return None
 
     def _run_ui(self):
-        self.doc.add_periodic_callback(self._update_ui, 100)
+        self.doc.add_periodic_callback(self._update_ui, 200)
         return None
 
     def _setup_ui_sources(self):
@@ -213,7 +213,11 @@ class UI:
             self.sim.set_sipm_gain(1, new)
             return None
         def _threshold_changed(attr, old, new):
-            self.sim.set_threshold(new)
+            with self.lock:
+                if self.simulate:
+                    self.sim.set_threshold(new)
+                else:
+                    self.instrument.set_detection_threshold(thresh=new, thresh_key="min_intensity_thresh[0]")
             self.thresh_line.location = self.sliders[2].value
             return None
         slider_margin = (10, 10, 20, 50)

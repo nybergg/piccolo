@@ -73,8 +73,8 @@ class PiccoloRP:
 
         # Join the parameter information into a single list
         self.mmap_info = (
-            fpga_inputs
-            + fpga_outputs
+            fpga_outputs
+            + fpga_inputs
         )
 
         # Store a list of variable names for FADS, droplet, and sort gates
@@ -481,6 +481,23 @@ class PiccoloRP:
         return None
     
 
+    ################ SiPM Gain Methods #############
+
+    def set_sipm_gain(self, gain_id, voltage):
+        # Initialize the interface
+        rp.rp_Init()
+
+        # Reset analog pins
+        rp.rp_ApinReset()
+
+        #! METHOD 2: Configure just slow Analog outputs
+        rp.rp_AOpinSetValue(gain_id, voltage)
+        print (f"Set voltage on AO[{gain_id}] to {voltage} V")
+
+        # Release resources
+        rp.rp_Release()
+    
+
     ################ Server methods ################
 
     def _control_server(self, client):
@@ -600,6 +617,50 @@ class PiccoloRP:
         while True:
             time.sleep(0.001)  # keep main thread alive
 
+    def test(self):
+        print("\n////////// Starting Red Pitaya Piccolo Testing ///////////")
+        
+        # Test the logging
+        print("--------Testing logging--------")
+        self._initialize_csv()
+        self.start_logging()
+        print("Logging test completed.")
+        
+        # Test the memory mapping and reading/writing
+        print("--------Testing memory mapping--------")
+        self.get_all()
+
+        # Test the ADC data acquisition
+        print("--------Testing ADC data acquisition--------")
+        self._get_adc_data()
+
+        # Test the memory mapping and reading/writing
+        print("--------Testing get/set--------")
+        test_var = "min_width_thresh[0]"
+        test_val = 200
+        print(f"Testing get/set for {test_var} with test value of {test_val}...")
+        
+        val = self.get_var(var_name = test_var)
+        print(f"Got value of {val} for {test_var}")
+        self.set_var(var_name = test_var, value = test_val)
+        print(f"Set value of {test_val} to {test_var}")
+        val = self.get_var(var_name = test_var)
+        print(f"Reread value of {val} for {test_var}")
+
+        # Reset variables back to defaults
+        self._set_defaults()
+        self.get_all()
+        print("Reset variables to defaults")
+
+        print("--------Testing continuous get all (3x) --------")
+        for _ in range(3):
+            fpga_vars = self.get_all()
+            val = fpga_vars['droplet_id']
+            print(f"Cur Droplet ID:{val}")
+            time.sleep(0.0001)
+
+        print("\n////////// All Red Pitaya Testing Complete ///////////")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
@@ -607,50 +668,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     piccolo = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
-    
-    # Test the logging
-    # print("--------Testing logging--------")
-    # piccolo._initialize_csv()
-    # piccolo.start_logging()
-    # print("Logging test completed.")
-    
-    # Test the memory mapping and reading/writing
-    print("--------Testing memory mapping--------")
-    piccolo.get_all()
-
-    # Test the ADC data acquisition
-    print("--------Testing ADC data acquisition--------")
-    piccolo._get_adc_data()
-
-    # Test the memory mapping and reading/writing
-    print("--------Testing get/set--------")
-    test_var = "min_width_thresh[0]"
-    test_val = 200
-    print(f"Testing get/set for {test_var} with test value of {test_val}...")
-    
-    val = piccolo.get_var(var_name = test_var)
-    print(f"Got value of {val} for {test_var}")
-    piccolo.set_var(var_name = test_var, value = test_val)
-    print(f"Set value of {test_val} to {test_var}")
-    val = piccolo.get_var(var_name = test_var)
-    print(f"Reread value of {val} for {test_var}")
-
-    # Reset variables back to defaults
-    piccolo._set_defaults()
-    piccolo.get_all()
-    print("Reset variables to defaults")
-
-    print("--------Testing continuous get all--------")
-    for _ in range(30):
-        fpga_vars = piccolo.get_all()
-        val = fpga_vars['droplet_id']
-        print(f"Cur Droplet ID:{val}")
-        time.sleep(0.0001)
-
-    print("\n////////// All Red Pitaya Testing Complete ///////////")
-
-    # Test servers
-    print("--------Testing servers--------")
     piccolo.start_servers()
 
     
