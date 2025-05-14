@@ -219,9 +219,9 @@ class Instrument:
     def setup_clients(self):
         """Initialize but don't start clients yet."""
         self.adc_stream_client = ADCStreamClient(
-            data_callback=self._on_adc_data)
+            data_callback=self._get_adc_data)
         self.memory_stream_client = MemoryStreamClient(
-            data_callback=self._on_memory_data)
+            data_callback=self._get_memory_data)
         self.memory_command_client = MemoryCommandClient()
         self.control_command_client = ControlCommandClient()
 
@@ -258,22 +258,18 @@ class Instrument:
     
     ################ Red Pitaya ADC Data Handling Methods ################
 
-    def _on_adc_data(self, adc1_data, adc2_data):
+    def _get_adc_data(self, adc1_data, adc2_data):
         self.adc1_data = adc1_data
         self.adc2_data = adc2_data
 
         return self.adc1_data, self.adc2_data
 
-    def _on_memory_data(self, fpgaoutput):
+    def _get_memory_data(self, fpgaoutput):
         if not fpgaoutput:
             return
 
         try:
-            row = {}
-
-            # Scalar metadata
-            for key in ("droplet_id", "cur_time_us", "droplet_classification"):
-                row[key] = fpgaoutput[key]
+            row = fpgaoutput
             
             for ch in (0, 1):
                 ch_key = f"CH{ch+1}"
@@ -368,15 +364,31 @@ class Instrument:
         return self.sort_gates
     
 
+    def set_detection_threshold(self, thresh, thresh_key = "min_intensity_thresh[0]"):
+
+        if self.verbose:
+            print(f"[Instrument] Setting detection threshold for {thresh_key}: {thresh_key}")
+        
+        ch = int(thresh_key[thresh_key.find('[')+1:thresh_key.find(']')])
+        ch_key = f"CH{ch+1}"    
+        _, offset = self.calibration_values[ch_key]
+        thresh = thresh * 8192.0 + offset
+
+        # Write sort_gates to FPGA memory
+        self.set_memory_variable(thresh_key, thresh)
+        
+        return thresh
+    
+
 if __name__ == "__main__":
     instrument = Instrument(
         local_script="piccolo_rp.py",
         local_dir="redpitaya",
         script_args=["--verbose", "--very_verbose"],
-        rp_dir="piccolo_testing0430",
+        rp_dir="piccolo_testing",
         verbose=True,
         very_verbose=True,
-        debug_flag=True
+        debug_flag=False
     )
 
     try:
@@ -387,7 +399,7 @@ if __name__ == "__main__":
         launch_thread.start()
         print("\n[piccolo-instrument] Launching Piccolo RP server...")
 
-        time.sleep(9)  # Give time for the server to start
+        time.sleep(12)  # Give time for the server to start
 
         # Start cliend threads
         print("\n[piccolo-instrument] Piccolo server started.")
@@ -454,7 +466,9 @@ if __name__ == "__main__":
         time.sleep(1)  # Give time for the clients to stop
 
 
-        ############ TESTING DROPLET DATA BUFFER ############
+        ############ TESTING THRESHOLD SETTING ############
+        instrument.set_detection_threshold(thresh=0.1, thresh_key='min_intensity_thresh[0]')
+
 
             
     except KeyboardInterrupt:
