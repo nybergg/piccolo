@@ -63,13 +63,14 @@ class BaseClient:
 
 class ADCStreamClient(BaseClient):
     """Stream ADC waveform data."""
-    def __init__(self, port=5001):
+    def __init__(self, port=5001, data_callback=None):
         super().__init__(port, is_streaming_client=True)
-        self.latest_data = None
+        self.adc1_data = None
+        self.adc2_data = None
+        self.data_callback = data_callback
         self.lock = threading.Lock()
 
     def _run(self):
-        message = struct.pack("I", 3).ljust(16, b'\x00')
         n_channels = 2
         buffer_size = 4096 
         mem_size = 4
@@ -77,44 +78,57 @@ class ADCStreamClient(BaseClient):
 
         try:
             while not self.stop_flag.is_set():
-                self.sock.sendall(message)
-                data = recv_data(self.sock, packet_size)
-                if data:
-                    with self.lock:
-                        self.latest_data = struct.unpack(f'{n_channels*buffer_size}f', data) # Unpack as floats in a list
-                        self.adc1_data = np.array(self.latest_data[:buffer_size]) #TODO: should this be managed in the client class or in the instrument class?
-                        self.adc2_data = np.array(self.latest_data[buffer_size:])
-                
+                raw_data = recv_data(self.sock, packet_size)
+                if not raw_data:
+                    break
+            
+                float_data = struct.unpack(f'{n_channels*buffer_size}f', raw_data)
+                with self.lock:
+                    adc1_data = np.array(float_data[:buffer_size]) 
+                    adc2_data = np.array(float_data[buffer_size:])
+                    self.adc1_data = adc1_data
+                    self.adc2_data = adc2_data
+                if self.data_callback:
+                    self.data_callback(adc1_data, adc2_data)
+
         except Exception as e:
             print(f"[ADCStreamClient] Error during _run: {e}")
         finally:
             self.close()
 
+        return adc1_data, adc2_data
 
 class MemoryStreamClient(BaseClient):
     """Stream droplet/memory data."""
-    def __init__(self, port=5002):
+    def __init__(self, port=5002, data_callback=None):
         super().__init__(port, is_streaming_client=True)
-        self.latest_data = None
+        self.fpgaoutput = None
+        self.data_callback = data_callback
         self.lock = threading.Lock()
 
     def _run(self):
+        packet_size = 16
+
         try:
             while not self.stop_flag.is_set():
-                header = recv_data(self.sock, 16)
+                header = recv_data(self.sock, packet_size)
                 if not header:
                     break
-                msg_len = struct.unpack("I", header[:4])[0]
-                data = recv_data(self.sock, msg_len)
-                if data:
-                    with self.lock:
-                        self.latest_data = data
-                        self.fpgaoutput = json.loads(data.decode())
+                json_len = struct.unpack("I", header[:4])[0]
+                json_msg = recv_data(self.sock, json_len)
+                if not json_msg:
+                    break
+                with self.lock:
+                    fpgaoutput = json.loads(json_msg.decode())
+                    self.fpgaoutput = fpgaoutput
+                if self.data_callback:
+                    self.data_callback(fpgaoutput)
         except Exception as e:
             print(f"[MemoryStreamClient] Error during _run: {e}")
         finally:
             self.close()
 
+        return fpgaoutput
 
 
 class MemoryCommandClient(BaseClient):
@@ -135,7 +149,6 @@ class MemoryCommandClient(BaseClient):
                 with self.lock:
                     if self.command_queue:
                         variable, value = self.command_queue.pop(0)
-
                         message = json.dumps({"name": variable, "value": value}).encode()
                         header = struct.pack("I", len(message)).ljust(16, b'\x00')
                         self.sock.sendall(header + message)
@@ -149,7 +162,7 @@ class MemoryCommandClient(BaseClient):
 
 
 class ControlCommandClient(BaseClient):
-    """Send a one-time kill/control command."""
+    """Send a one-time shutdown command for piccolo methods on the Red Pitaya."""
     def __init__(self, port=5000):
         super().__init__(port, is_streaming_client=False)
 
@@ -158,11 +171,11 @@ class ControlCommandClient(BaseClient):
         message = struct.pack("I", kill_cmd).ljust(16, b'\x00')
 
         try:
-            print("[ControlCommandClient] Sending kill command...")
+            print("[ControlCommandClient] Sending piccolo_rp shutdown command...")
             self.sock.sendall(message)
-            print("[ControlCommandClient] Kill command sent successfully.")
+            print("[ControlCommandClient] Shutdown command sent successfully.")
         except Exception as e:
-            print(f"[ControlCommandClient] Error sending kill command: {e}")
+            print(f"[ControlCommandClient] Error sending shutdown command: {e}")
         finally:
             self.stop_flag.set()
             self.close()

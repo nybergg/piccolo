@@ -73,8 +73,8 @@ class PiccoloRP:
 
         # Join the parameter information into a single list
         self.mmap_info = (
-            fpga_inputs
-            + fpga_outputs
+            fpga_outputs
+            + fpga_inputs
         )
 
         # Store a list of variable names for FADS, droplet, and sort gates
@@ -275,7 +275,7 @@ class PiccoloRP:
 
         self.fpga_vars = fpga_vars
         
-        return None
+        return fpga_vars
     
     def set_var(self, var_name, value):
         """Set a memory value to the specified address."""
@@ -341,6 +341,7 @@ class PiccoloRP:
 
     
     ################ Logging methods ################
+
     def _initialize_csv(self):
         """Open the CSV file and write the header. For multi-channel variables, expand headers."""
         if self.verbose:
@@ -416,49 +417,9 @@ class PiccoloRP:
         if self.verbose:
             print("Logging stopped.")
 
-    # def _convert_width(self, raw):
-    #     """
-    #     Convert clock cycles to milliseconds.
-    #     The conversion factor is determined by the clock frequency: (clock_MHz * 1000) cycles per millisecond.
-    #     """
-    #     factor = self.clock_calibration * 1000  # cycles per millisecond
-    #     if isinstance(raw, list):
-    #         return [x / factor for x in raw]
-    #     return raw / factor
-    
-    # def _convert_intensity(self, raw, channel):
-    #     """
-    #     Convert raw intensity to volts using calibration parameters for the specified channel.
-    #     """
-    #     if channel not in self.voltage_calibration:
-    #         raise ValueError(f"Calibration parameters for channel {channel} not found.")
-    #     params = self.voltage_calibration[channel]
-    #     return (raw - params["offset"]) * params["gain"] / params["buffer_size"]
-    
-    # def _convert_area(self, raw, channel):
-    #     """
-    #     Convert raw area (clock cycles x raw intensity) to V·ms.
-    #     First converts the raw value to volts, then converts clock cycles to milliseconds using the clock_MHz value.
-    #     """
-    #     if channel not in self.voltage_calibration:
-    #         raise ValueError(f"Calibration parameters for channel {channel} not found.")
-    #     params = self.voltage_calibration[channel]
-    #     factor = self.clock_calibration * 1000  # cycles per millisecond
-    #     return ((raw - params["offset"]) * params["gain"] / params["buffer_size"]) / factor
-    
-    # def _get_calibration(self, config_path):
-        # """
-        # Gets calibration configuration from a JSON file and initializes calibration parameters.
-        # """
-        # with open(config_path, "r") as f:
-        #     config = json.load(f)
-        # # Calibration parameters for voltage conversion.
-        # self.voltage_calibration = config.get("voltage_calibration", {})
-        # # Clock frequency in MHz for time conversions.
-        # self.clock_calibration = config.get("clock_MHz", 125)
-        
-    
+
     ################ Oscilliscope methods ################
+
     def _get_adc_data(self, continuous=False):
         """Read the ADC data from the memory."""    
         dec = rp.RP_DEC_128
@@ -520,6 +481,23 @@ class PiccoloRP:
         return None
     
 
+    ################ SiPM Gain Methods #############
+
+    def set_sipm_gain(self, gain_id, voltage):
+        # Initialize the interface
+        rp.rp_Init()
+
+        # Reset analog pins
+        rp.rp_ApinReset()
+
+        #! METHOD 2: Configure just slow Analog outputs
+        rp.rp_AOpinSetValue(gain_id, voltage)
+        print (f"Set voltage on AO[{gain_id}] to {voltage} V")
+
+        # Release resources
+        rp.rp_Release()
+    
+
     ################ Server methods ################
 
     def _control_server(self, client):
@@ -569,14 +547,16 @@ class PiccoloRP:
         """ TCP server that streams fpga outputs """
         
         # Continuously stream FPGA outputs to the client
-        # TODO: consider running this in it's own thread to mirror the ADC server
         try:
             while True:
                 self.get_all()
                 msg = json.dumps(self.fpga_vars).encode()
                 length = struct.pack("I", len(msg)).ljust(16, b'\x00')
                 client.sendall(length + msg)
-                time.sleep(0.1)  # or trigger-based
+                time.sleep(0.005)  # or trigger-based
+                val = self.fpga_vars['droplet_id']
+                if self.verbose:
+                    print(f"Cur Droplet ID:{val}")
         except Exception as e:
             print(f"[MemStream] Error: {e}")
         finally:
@@ -635,7 +615,51 @@ class PiccoloRP:
 
         print("All servers running.")
         while True:
-            time.sleep(0.01)  # keep main thread alive
+            time.sleep(0.001)  # keep main thread alive
+
+    def test(self):
+        print("\n////////// Starting Red Pitaya Piccolo Testing ///////////")
+        
+        # Test the logging
+        print("--------Testing logging--------")
+        self._initialize_csv()
+        self.start_logging()
+        print("Logging test completed.")
+        
+        # Test the memory mapping and reading/writing
+        print("--------Testing memory mapping--------")
+        self.get_all()
+
+        # Test the ADC data acquisition
+        print("--------Testing ADC data acquisition--------")
+        self._get_adc_data()
+
+        # Test the memory mapping and reading/writing
+        print("--------Testing get/set--------")
+        test_var = "min_width_thresh[0]"
+        test_val = 200
+        print(f"Testing get/set for {test_var} with test value of {test_val}...")
+        
+        val = self.get_var(var_name = test_var)
+        print(f"Got value of {val} for {test_var}")
+        self.set_var(var_name = test_var, value = test_val)
+        print(f"Set value of {test_val} to {test_var}")
+        val = self.get_var(var_name = test_var)
+        print(f"Reread value of {val} for {test_var}")
+
+        # Reset variables back to defaults
+        self._set_defaults()
+        self.get_all()
+        print("Reset variables to defaults")
+
+        print("--------Testing continuous get all (3x) --------")
+        for _ in range(3):
+            fpga_vars = self.get_all()
+            val = fpga_vars['droplet_id']
+            print(f"Cur Droplet ID:{val}")
+            time.sleep(0.0001)
+
+        print("\n////////// All Red Pitaya Testing Complete ///////////")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -644,44 +668,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     piccolo = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
-    
-    # Test the logging
-    # print("--------Testing logging--------")
-    # piccolo._initialize_csv()
-    # piccolo.start_logging()
-    # print("Logging test completed.")
-
-    
-    # Test the memory mapping and reading/writing
-    print("--------Testing memory mapping--------")
-    piccolo.get_all()
-
-    # Test the ADC data acquisition
-    print("--------Testing ADC data acquisition--------")
-    piccolo._get_adc_data()
-
-    # Test the memory mapping and reading/writing
-    print("--------Testing get/set--------")
-    test_var = "min_width_thresh[0]"
-    test_val = 200
-    print(f"Testing get/set for {test_var} with test value of {test_val}...")
-    
-    val = piccolo.get_var(var_name = test_var)
-    print(f"Got value of {val} for {test_var}")
-    piccolo.set_var(var_name = test_var, value = test_val)
-    print(f"Set value of {test_val} to {test_var}")
-    val = piccolo.get_var(var_name = test_var)
-    print(f"Reread value of {val} for {test_var}")
-
-    # Reset variables back to defaults
-    piccolo._set_defaults()
-    piccolo.get_all()
-    print("Reset variables to defaults")
-
-    print("\n////////// All Red Pitaya Testing Complete ///////////")
-
-    # Test servers
-    print("--------Testing servers--------")
     piccolo.start_servers()
 
     
