@@ -45,7 +45,8 @@ class UI:
         self.name = name
         self.verbose = verbose
 
-        self.sort_keys = ["cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]"]
+        # self.sort_keys = ["cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]"]
+        self.sort_keys = ["cur_droplet_area_vms[0]", "cur_droplet_area_vms[1]"]
         
         if self.verbose:
             print("%s: opening..."%self.name)
@@ -84,7 +85,7 @@ class UI:
     
     def _init_hw(self):
         # Launch piccolo instrument:
-        self.instrument = Instrument(rp_dir="piccolo_testing", verbose=False, very_verbose=False)
+        self.instrument = Instrument(rp_dir="piccolo_testing", verbose=True, very_verbose=False)
         self.lock = threading.Lock()
         self.instrument.launch_piccolo_rp()
         time.sleep(6)  # Give time for the server to start
@@ -107,8 +108,8 @@ class UI:
 
     def _setup_ui_sources(self):
         # Initialize data sources for the plots and interactive callbacks:
-        self.scatter = ColumnDataSource(pd.DataFrame(columns=['x', 'y', 'density']))
-        self.sipm = ColumnDataSource(pd.DataFrame(columns=['x', 'y0', 'y1']))
+        self.scatter_source = ColumnDataSource(pd.DataFrame(columns=['x', 'y', 'density']))
+        self.sipm_source = ColumnDataSource(pd.DataFrame(columns=['x', 'y0', 'y1']))
         self.thresh = 0.05
         self.buffer_length = 10000
         self.boxselect = {"x0": [0], "y0": [0], "x1": [0], "y1": [0]}
@@ -125,7 +126,7 @@ class UI:
         self._create_sliders()
         self._create_bufferspinner()
         self._create_custom_div()
-        self._create_2d_scatter_plot()
+        self._create_scatter_plot()
         self._create_signal_plot()
         # Generate Layout:
         self.doc.add_root(
@@ -138,9 +139,9 @@ class UI:
                         self.bufferspinner,
                         self.custom_div,
                         ),
-                    self.plot2d,
+                    self.fig_scatter,
                     ),
-                self.plot,
+                self.fig_signal,
                 )
             )
         return None
@@ -150,7 +151,7 @@ class UI:
         with self.lock:
             if self.simulate:
                 # Update SiPM simulation data
-                self.sipm.data = {
+                self.sipm_source.data = {
                         'x':    np.linspace(0, 50, 4096),
                         'y0':   self.sim.signal[0],
                         'y1':   self.sim.signal[1]
@@ -161,7 +162,7 @@ class UI:
                 
             else:
                 # Update SiPM data
-                self.sipm.data = {
+                self.sipm_source.data = {
                     'x':    np.linspace(0, 50, 4096),
                     'y0':   self.instrument.adc1_data,
                     'y1':   self.instrument.adc2_data
@@ -182,10 +183,9 @@ class UI:
             ix = np.clip(ix, 0, bins-1)
             iy = np.clip(iy, 0, bins-1)
             density = H[ix, iy]
-            # print(f"Density from ui: {density}")
 
             # Set source for scatter plot with density
-            self.scatter.data = {
+            self.scatter_source.data = {
                 'x': x,
                 'y': y,
                 'density': density
@@ -200,7 +200,7 @@ class UI:
         self.timers = np.roll(self.timers, 1)
         self.timers[0] = time.perf_counter()
         s_per_update = np.mean(np.diff(self.timers)) * -1
-        self.plot.title.text = (
+        self.fig_signal.title.text = (
             f"Update Rate: {1/s_per_update:.01f} Hz"
             f" ({s_per_update*1000:.00f} ms)")
         
@@ -292,29 +292,29 @@ class UI:
             )
         return None
 
-    def _create_2d_scatter_plot(self):
+    def _create_scatter_plot(self):
         
         self._density_mapper = LinearColorMapper(
             palette=Viridis256,
             low=float(0),
             high=float(1)
             )
-        self.plot2d = figure(
+        self.fig_scatter = figure(
             height=400,
             width=450,
-            x_axis_label="Channel 1 AUC",
-            y_axis_label="Channel 2 AUC",
-            x_range=(1e-2, 1e1),
-            y_range=(1e-2, 1e1),
+            x_axis_label=self.sort_keys[0],
+            y_axis_label=self.sort_keys[1],
+            x_range=(1e-1, 10),
+            y_range=(1e-1, 10),
             x_axis_type="log",
             y_axis_type="log",
             title="Density Scatter Plot",
             tools="box_select,reset",
             )
-        glyph = self.plot2d.scatter(
+        glyph = self.fig_scatter.scatter(
             "x",
             "y",
-            source=self.scatter,
+            source=self.scatter_source,
             size=2,
             fill_color={"field": "density", "transform": self._density_mapper},
             line_color=None,
@@ -351,7 +351,7 @@ class UI:
             """,
             )
         # Attach Javascript and callback to plot for 'selectiongeometry' event:
-        self.plot2d.js_on_event(SelectionGeometry, callback)
+        self.fig_scatter.js_on_event(SelectionGeometry, callback)
         def _boxselect_pass(attr, old, new):
             print(f"Box select: {new}")
             print(f"Dict: {dict(new)}")
@@ -371,7 +371,7 @@ class UI:
         return None
 
     def _create_signal_plot(self):
-        self.plot = figure(
+        self.fig_signal = figure(
             height=300,
             width=900,
             title="Generated SiPM Data",
@@ -382,17 +382,17 @@ class UI:
             y_range=(0, 1.2),
             margin=(50, 0, 0, 10),
             )
-        self.plot.line(
+        self.fig_signal.line(
             "x",
             "y0",
-            source=self.sipm,
+            source=self.sipm_source,
             color="mediumseagreen",
             legend_label="SiPM0",
             )
-        self.plot.line(
+        self.fig_signal.line(
             "x",
             "y1",
-            source=self.sipm,
+            source=self.sipm_source,
             color="royalblue",
             legend_label="SiPM1"
             )
@@ -404,7 +404,7 @@ class UI:
             line_width=2,
             line_dash="dotted",
         )
-        self.plot.add_layout(self.thresh_line)
+        self.fig_signal.add_layout(self.thresh_line)
         return None
 
     def _create_divhtml(self):
