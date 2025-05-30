@@ -71,7 +71,7 @@ class Instrument:
         """ Get the local information for the Red Pitaya and run the script on it"""
         
         # Load the Red Pitaya login information from a JSON file
-        with open("redpitaya/rp_login_desk.json", "r") as f:
+        with open("redpitaya/rp_login_lab.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
@@ -302,9 +302,18 @@ class Instrument:
 
         return self.droplet_data
 
-    def save_log(self, filename="droplet_log.csv"):
+    def save_droplet_data_log(self, filename="droplet_log.csv"):
         self.droplet_data.to_csv(filename, index=False)
         return None
+    
+    # In  Instrument or DummyInstrument class
+    def save_adc_log(self, filename="adc_log.csv"):
+        # Assuming adc1_data and adc2 _data have 4096 points
+        time_data = np.linspace(0, 50, 4096)
+        df = pd.DataFrame({'time': time_data,
+                            'adc1': self.adc1_data,
+                            'adc2': self.adc2_data})
+        df.to_csv(filename, index=False)
     
     
     def set_gate_limits(self, sort_keys, limits):
@@ -375,7 +384,7 @@ class Instrument:
         thresh = thresh * 8192.0 + offset
 
         # Write sort_gates to FPGA memory
-        self.set_memory_variable(thresh_key, thresh)
+        self.set_memory_variable(thresh_key, int(thresh))
         
         return thresh
     
@@ -477,5 +486,5 @@ if __name__ == "__main__":
         print(f"Socket error: {sock_err}")
     except Exception as local_err:
         print(f"Error: {local_err}")
-    # finally:
-    #     instrument.stop_servers()
+    finally:
+        instrument.stop_servers()
