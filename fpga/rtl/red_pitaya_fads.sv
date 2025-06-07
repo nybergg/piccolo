@@ -1,14 +1,15 @@
 `timescale 10ns / 1ns //for simulation
 /*
-  Modified version of the RedPitaya FADS module for dual ADC inputs.
-  In this version the multiplexer has been removed and two ADC channels are sampled concurrently.
+  RedPitaya FADS module for dual ADC inputs.
 */
 module red_pitaya_fads #(
-    parameter RSZ = 14,     
-    parameter DWT = 14,     
-    parameter MEM = 32,     
-    parameter CHNL = 2,     // Now only two channels
-    parameter ALIG = 4'h4   
+    parameter RSZ = 14,
+    parameter DWT = 14,
+    parameter MEM = 32,
+    parameter CHNL = 2,      // Now only two channels
+    parameter ALIG = 4'h4,
+    parameter MAVG_WINDOW_SIZE = 128, // Window size for the filter. MUST be a power of 2. 128 cc ~ 1us
+    parameter MAVG_SHIFT_BITS = 7    // log2(MAVG_WINDOW_SIZE). This is the bit-shift amount for division.
 )(
     // ADC inputs – now two independent channels
     input                   clk_i,          // ADC Clock
@@ -87,7 +88,7 @@ wire [CHNL-1:0]      low_area;
 wire [CHNL-1:0] positive_area;
 wire [CHNL-1:0]     high_area;
 
-// Intensity thresholds for all channels
+// Intensity thresholds
 reg signed  [DWT-1:0]   min_intensity_threshold [CHNL-1:0]; // noise cutoff threshold - from here on we evaluate and record
 reg signed  [DWT-1:0]   low_intensity_threshold [CHNL-1:0]; // min sorting threshold - below this value droplets are not sorted
 reg signed  [DWT-1:0]  high_intensity_threshold [CHNL-1:0]; // max sorting threshold - above this value droplets are not sorted
@@ -102,12 +103,13 @@ reg         [MEM-1:0]        min_area_threshold [CHNL-1:0]; // noise cutoff thre
 reg         [MEM-1:0]        low_area_threshold [CHNL-1:0]; // min sorting threshold
 reg         [MEM-1:0]       high_area_threshold [CHNL-1:0]; // max sorting threshold
 
-reg         [MEM-1:0] signal_width              [CHNL-1:0]; // Signal width for each channel
-reg signed  [MEM-1:0] signal_area               [CHNL-1:0]; // Signal area for each channel
-reg signed  [DWT-1:0] signal_max                [CHNL-1:0]; // Signal max intensity for each channel
+// Signal parameters 
+reg         [MEM-1:0]              signal_width [CHNL-1:0]; // Signal width for each channel
+reg signed  [MEM-1:0]               signal_area [CHNL-1:0]; // Signal area for each channel
+reg signed  [DWT-1:0]                signal_max [CHNL-1:0]; // Signal max intensity for each channel
 
-// Registers to store fast-changing ADC values for each channel
-reg signed [DWT-1:0] adc_values [CHNL-1:0];
+// Registers to store average-filtered ADC values for each channel
+reg signed [DWT-1:0]                 adc_values [CHNL-1:0]; // 
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,8 +141,61 @@ generate
 endgenerate
 
 // Final droplet sorting decision logic
-assign droplet_positive = &positive_intensity && &positive_width;
-assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (~(&positive_intensity && &positive_width));
+assign droplet_positive = &positive_intensity && &positive_width && &positive_area;
+assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (|low_area || |high_area || |positive_area) && (~(&positive_intensity && &positive_width && &positive_area));
+
+////////////////////////////////////////////////////////////////////////////////
+// MOVING AVERAGE FILTERS
+////////////////////////////////////////////////////////////////////////////////
+
+// This block implements two independent moving average filters, one for each ADC channel.
+// It uses a generate loop to create identical logic for each channel.
+
+wire signed [DWT-1:0] filtered_adc_values [CHNL-1:0]; // Wires to hold the output of each filter
+
+genvar ch;
+generate
+    for (ch = 0; ch < CHNL; ch = ch + 1) begin : MAVG_FILTERS
+        // A wider register to hold the sum of all samples in the window.
+        // Its width is calculated to prevent overflow.
+        reg signed [DWT+MAVG_SHIFT_BITS:0] mavg_sum;
+
+        // The shift register that holds the window of the last N samples.
+        reg signed [DWT-1:0] mavg_window [MAVG_WINDOW_SIZE-1:0];
+
+        // Wire for the current raw ADC input for this channel
+        wire signed [DWT-1:0] current_dat_i = (ch == 0) ? dat_a_i : dat_b_i;
+
+        // The main filter logic
+        always @(posedge clk_i) begin
+            if (!rstn_i) begin
+                // Reset the sum and clear the entire window on reset
+                mavg_sum <= 0;
+                for (integer j = 0; j < MAVG_WINDOW_SIZE; j = j + 1) begin
+                    mavg_window[j] <= 0;
+                end
+            end else begin
+                // Efficient "running sum" calculation:
+                // new_sum = old_sum - oldest_sample + newest_sample
+                mavg_sum <= mavg_sum - mavg_window[MAVG_WINDOW_SIZE-1] + current_dat_i;
+
+                // Shift the window registers to make room for the new sample
+                for (integer j = MAVG_WINDOW_SIZE-1; j > 0; j = j - 1) begin
+                    mavg_window[j] <= mavg_window[j-1];
+                end
+                // Add the new sample to the front of the window
+                mavg_window[0] <= current_dat_i;
+            end
+        end
+
+        // Calculate the average by dividing the sum by the window size.
+        // Since window size is a power of 2, this is just a fast bit-shift.
+        assign filtered_adc_values[ch] = mavg_sum >>> MAVG_SHIFT_BITS;
+
+    end
+endgenerate
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // ADC Sampling
@@ -151,8 +206,8 @@ always @(posedge clk_i) begin
     adc_values[0] <= 0;
     adc_values[1] <= 0;
   end else begin
-    adc_values[0] <= dat_a_i;
-    adc_values[1] <= dat_b_i;
+    adc_values[0] <= filtered_adc_values[0]; 
+    adc_values[1] <= filtered_adc_values[1]; 
   end
 end
 
@@ -244,10 +299,10 @@ always @(posedge clk_i) begin
                 if (adc_values[1] > signal_max[1])
                     signal_max[1] <= adc_values[1];
 
-                // For the droplet-sensing channel: increment width and accumulate area.
-                // For the other channel: accumulate area only.
+                // Based on the droplet-sensing channel signal: increment width and accumulate area for all channels.
                 if (adc_values[droplet_sensing_address] >= min_intensity_threshold[droplet_sensing_address]) begin
-                    signal_width[droplet_sensing_address] <= signal_width[droplet_sensing_address] + 32'd1;
+                    signal_width[0] <= signal_width[0] + 32'd1;
+                    signal_width[1] <= signal_width[1] + 32'd1;
                     signal_area[0]  <= signal_area[0] + adc_values[0];
                     signal_area[1]  <= signal_area[1] + adc_values[1];
                 end else begin
