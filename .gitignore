@@ -7,3 +7,10 @@ fpga/project/redpitaya.cache/wt/gui_handlers.wdf
 fpga/project/redpitaya.cache/wt/java_command_handlers.wdf
 fpga/project/redpitaya.cache/wt/webtalk_pa.xml
 fpga/project/vivado.log
+tests
+redpitaya/rp_login_desk.json
+redpitaya/rp_login_lab.json
+concurrency_tools.py
+logs
+__pycache__
+
