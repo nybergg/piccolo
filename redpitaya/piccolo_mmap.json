@@ -64,22 +64,22 @@
         "name": "min_width_thresh",
         "addr": ["0x001060", "0x001064"],
         "dtype": "32'd",
-        "default": [100, 0],
-        "units": "microseconds"
+        "default": [6000, 6000],
+        "units": "clock cycles"
         },
         {
         "name": "low_width_thresh",
         "addr": ["0x001080", "0x001084"],
         "dtype": "32'd",
-        "default": [100, 0],
-        "units": "microseconds"
+        "default": [6000, 6000],
+        "units": "clock cycles"
         },
         {
         "name": "high_width_thresh",
         "addr": ["0x0010a0", "0x0010a4"],
         "dtype": "32'd",
         "default": [125000, 3437096703],
-        "units": "microseconds"
+        "units": "clock cycles"
         },
         {
         "name": "min_area_thresh",
