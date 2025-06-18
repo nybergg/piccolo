@@ -71,7 +71,7 @@ class Instrument:
         """ Get the local information for the Red Pitaya and run the script on it"""
         
         # Load the Red Pitaya login information from a JSON file
-        with open("redpitaya/rp_login_desk.json", "r") as f:
+        with open("redpitaya/rp_login_lab.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
@@ -302,9 +302,18 @@ class Instrument:
 
         return self.droplet_data
 
-    def save_log(self, filename="droplet_log.csv"):
+    def save_droplet_data_log(self, filename="droplet_log.csv"):
         self.droplet_data.to_csv(filename, index=False)
         return None
+    
+    # In  Instrument or DummyInstrument class
+    def save_adc_log(self, filename="adc_log.csv"):
+        # Assuming adc1_data and adc2 _data have 4096 points
+        time_data = np.linspace(0, 50, 4096)
+        df = pd.DataFrame({'time': time_data,
+                            'adc1': self.adc1_data,
+                            'adc2': self.adc2_data})
+        df.to_csv(filename, index=False)
     
     
     def set_gate_limits(self, sort_keys, limits):
@@ -375,7 +384,7 @@ class Instrument:
         thresh = thresh * 8192.0 + offset
 
         # Write sort_gates to FPGA memory
-        self.set_memory_variable(thresh_key, thresh)
+        self.set_memory_variable(thresh_key, int(thresh))
         
         return thresh
     
@@ -417,7 +426,7 @@ if __name__ == "__main__":
         print("\n-----------Running Piccolo Tests-----------")
         print("\n[Test] ADC Stream Client testing.")
 
-        for _ in range(1):  # ~1 second if 0.1s stream interval
+        for _ in range(3):  # ~1 second if 0.1s stream interval
             time.sleep(0.1)
             if instrument.adc_stream_client.adc1_data is not None:
                 print("[Test] Received ADC data block.")
@@ -430,44 +439,44 @@ if __name__ == "__main__":
                 print("[Test] No data yet.")
 
 
-        ############ TESTING MEM STREAM CLIENT ############
-        print("\n[Test] Memory Stream Client testing.")
+        # ############ TESTING MEM STREAM CLIENT ############
+        # print("\n[Test] Memory Stream Client testing.")
 
-        # Read the droplet data buffer
-        print(f"[Test] Droplet data buffer length: {len(instrument.droplet_data)}")
-        print(instrument.droplet_data.head(30))
-        instrument.save_log("droplet_log_0512.csv")
+        # # Read the droplet data buffer
+        # print(f"[Test] Droplet data buffer length: {len(instrument.droplet_data)}")
+        # print(instrument.droplet_data.head(30))
+        # instrument.save_droplet_data_log("droplet_log_0603.csv")
 
         
-        ############ TESTING MEMORY COMMAND CLIENT ############
-        print("\n[Test] Memory Command Client testing.")
+        # ############ TESTING MEMORY COMMAND CLIENT ############
+        # print("\n[Test] Memory Command Client testing.")
 
-        var_name = "low_intensity_thresh[0]"
-        var_value = 1234
+        # var_name = "low_intensity_thresh[0]"
+        # var_value = 1234
         
-        try:
-            # Read initial value
-            fpgaoutput = instrument.memory_stream_client.fpgaoutput
-            print(f"[Test] Initial Memory Value for {var_name}: {fpgaoutput[var_name]}")
+        # try:
+        #     # Read initial value
+        #     fpgaoutput = instrument.memory_stream_client.fpgaoutput
+        #     print(f"[Test] Initial Memory Value for {var_name}: {fpgaoutput[var_name]}")
             
-            # Send a test variable update
-            instrument.set_memory_variable(var_name, var_value)
-            print("[Test] Set {var_value} to {var_value}")
-            time.sleep(0.5)  # Give time for the command to be sent
+        #     # Send a test variable update
+        #     instrument.set_memory_variable(var_name, var_value)
+        #     print("[Test] Set {var_value} to {var_value}")
+        #     time.sleep(0.5)  # Give time for the command to be sent
 
-            # Read updated value
-            fpgaoutput = instrument.memory_stream_client.fpgaoutput
-            print(f"[Test] Updated Memory Value for {var_name}: {fpgaoutput[var_name]}")
+        #     # Read updated value
+        #     fpgaoutput = instrument.memory_stream_client.fpgaoutput
+        #     print(f"[Test] Updated Memory Value for {var_name}: {fpgaoutput[var_name]}")
 
-        finally:
-            print("[Test] Memory Command Client stopped.")
-            instrument.stop_clients()
+        # finally:
+        #     print("[Test] Memory Command Client stopped.")
+        #     instrument.stop_clients()
 
-        time.sleep(1)  # Give time for the clients to stop
+        # time.sleep(1)  # Give time for the clients to stop
 
 
-        ############ TESTING THRESHOLD SETTING ############
-        instrument.set_detection_threshold(thresh=0.1, thresh_key='min_intensity_thresh[0]')
+        # ############ TESTING THRESHOLD SETTING ############
+        # instrument.set_detection_threshold(thresh=0.1, thresh_key='min_intensity_thresh[0]')
 
 
             
@@ -477,5 +486,5 @@ if __name__ == "__main__":
         print(f"Socket error: {sock_err}")
     except Exception as local_err:
         print(f"Error: {local_err}")
-    # finally:
-    #     instrument.stop_servers()
+    finally:
+        instrument.stop_servers()
