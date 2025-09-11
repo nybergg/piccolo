@@ -1,4 +1,4 @@
-# Imports from the python standard library:
+# Imports from the python standard library
 import math
 import numpy as np
 import sys
@@ -10,31 +10,31 @@ import webbrowser
 from threading import Timer
 import logging
 
-# Third party imports: Dash and Plotly
+# Third party imports
 import dash
 from dash import dcc, html, Input, Output, State, exceptions
 import plotly.graph_objects as go
 import plotly.io as pio
 import dash_bootstrap_components as dbc
 from flask import Response # For MJPEG streaming
-
-# Camera related imports
 from pypylon import pylon
 import cv2
-camera_available = True
 
-# --- Import Actual Instrument/Sim Modules ---
+# Piccolo imports
 import concurrency_tools as ct
 from piccolo_instrument_sim import InstrumentSim
 from piccolo_instrument import Instrument
 print("Successfully imported all modules.")
-# --- End Imports ---
 
-# --- Global Instrument/Sim and Lock ---
+
+################ Global Variables ################
+
+# Initiate Instrument/Sim and Lock
 simulate = False
 launch_rp = True
 lock = threading.Lock() # For instrument data
 instrument = None
+camera_available = True
 SERVER_URL = "http://127.0.0.1:8050/"
 
 if simulate:
@@ -49,7 +49,7 @@ else:
     instrument.start_clients()
     time.sleep(1)
 
-# --- Camera Globals ---
+# Initiate Camera Variables
 latest_frame_jpeg = None
 frame_lock = threading.Lock() # Separate lock for camera frame
 camera_running = False
@@ -63,7 +63,7 @@ if camera_available:
     if ret_init:
         latest_frame_jpeg = jpeg_init.tobytes()
 
-# --- Camera Thread Function ---
+# Camera Thread Function
 def camera_thread_func():
     global latest_frame_jpeg, camera_running
     if not camera_available:
@@ -129,17 +129,19 @@ def camera_thread_func():
         print("Camera thread finished.")
 
 
-# --- Dark Theme Setup ---
+################ Dash App Setup ################
+
+# Dark Theme Setup
 pio.templates.default = "plotly_dark"
 external_stylesheets = [dbc.themes.CYBORG]
 
-# --- Dash App Initialization ---
+# Dash App Initialization
 app = dash.Dash(__name__,
                 title="Piccolo UI (Dash)",
                 external_stylesheets=external_stylesheets,
                 update_title=None)
 
-# --- MJPEG Streaming Route ---
+# MJPEG Streaming Route
 def generate_camera_frames():
     global latest_frame_jpeg
     while True:
@@ -167,7 +169,7 @@ def video_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-# --- Define Axis Options ---
+# Define Axis Options
 axis_options_list = [
     "cur_droplet_intensity[0]", "cur_droplet_intensity[1]",
     "cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]",
@@ -180,7 +182,7 @@ axis_options_dict = [{'label': i, 'value': i} for i in axis_options_list]
 initial_x_key = "cur_droplet_intensity_v[0]"
 initial_y_key = "cur_droplet_intensity_v[1]"
 
-# --- Dash App Layout ---
+# Dash App Layout
 app.layout = dbc.Container([
     dcc.Store(id='timer-store', data=[]),
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
@@ -189,7 +191,7 @@ app.layout = dbc.Container([
     html.H3("Piccolo", style={'textAlign': 'center', 'marginBottom': '20px'}), # Centered main title
 
     dbc.Row([
-        # --- Controls Column (Left) ---
+        # Controls Column (Left)
         dbc.Col([
             html.H5("Controls"),
             html.Hr(),
@@ -224,7 +226,7 @@ app.layout = dbc.Container([
             html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
         ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
 
-        # --- Plots Column (Middle) ---
+        # Plots Column (Middle)
         dbc.Col([
             html.H6("Droplet Data"),
             dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
@@ -234,7 +236,7 @@ app.layout = dbc.Container([
             html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
         ], md=6),
 
-        # --- Camera Column (Right) ---
+        # Camera Column (Right)
         dbc.Col([
             html.H6("Basler Camera Live View"),
             html.Img(
@@ -260,7 +262,7 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 
-# --- Dash Callbacks ---
+################ Dash Callbacks ################
 
 @app.callback(
     Output('axis-keys-store', 'data'),
@@ -364,7 +366,13 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
     return scatter_fig, signal_fig, update_text, timers
 
 
-@app.callback( Output('laser0-slider', 'value'), [Input('laser0-slider', 'value'), Input('laser1-slider', 'value'), Input('threshold-slider', 'value')], prevent_initial_call=True)
+@app.callback(
+        Output('laser0-slider', 'value'), 
+        [Input('laser0-slider', 'value'), 
+         Input('laser1-slider', 'value'), 
+         Input('threshold-slider', 'value')], 
+         prevent_initial_call=True
+)
 def update_sliders(g0, g1, thresh):
     ctx = dash.callback_context; trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     with lock:
@@ -376,7 +384,11 @@ def update_sliders(g0, g1, thresh):
                 if trigger_id == 'threshold-slider': instrument.set_detection_threshold(thresh=thresh, thresh_key="min_intensity_thresh[0]")
     return g0
 
-@app.callback( Output('buffer-spinner', 'className'), [Input('buffer-spinner', 'value')], prevent_initial_call=True)
+@app.callback(
+        Output('buffer-spinner', 'className'), 
+        [Input('buffer-spinner', 'value')], 
+        prevent_initial_call=True
+)
 def update_buffer(value):
     if value is not None:
         with lock:
@@ -428,7 +440,14 @@ def display_box_select(box_data):
         html.Span(["Xmax: "] + to_sci(box['x1'][0]) + [" | Ymax: "] + to_sci(box['y1'][0]), style={'display': 'block'}),
     ]
 
-@app.callback( Output('save-status-div', 'children'), [Input('save-scatter-button', 'n_clicks'), Input('save-signal-button', 'n_clicks')], [State('scatter-filename-input', 'value'), State('signal-filename-input', 'value')], prevent_initial_call=True)
+@app.callback(
+        Output('save-status-div', 'children'), 
+        [Input('save-scatter-button', 'n_clicks'), 
+         Input('save-signal-button', 'n_clicks')], 
+        [State('scatter-filename-input', 'value'), 
+         State('signal-filename-input', 'value')], 
+         prevent_initial_call=True
+)
 def save_data(n_scatter, n_signal, scatter_file, signal_file):
     ctx = dash.callback_context; button_id = ctx.triggered[0]['prop_id'].split('.')[0]; msg = ""
     with lock:
@@ -445,7 +464,9 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
     print(msg)
     return msg
 
-# --- Cleanup and Signal Handling ---
+
+################ Cleanup and Signal Handling ################
+
 def cleanup():
     global camera_running, cam_thread
     print("\nInitiating shutdown sequence...")
@@ -481,7 +502,8 @@ def open_browser():
     try: webbrowser.open_new_tab(SERVER_URL)
     except Exception as e: print(f"Could not open browser automatically: {e}")
 
-# --- Run App ---
+
+################ Run App ################
 if __name__ == '__main__':
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)

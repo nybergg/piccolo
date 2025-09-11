@@ -419,68 +419,6 @@ class PiccoloRP:
 
 
     ################ Oscilliscope methods ################
-
-    # def _get_adc_data(self, continuous=False):
-    #     """Read the ADC data from the memory."""    
-    #     dec = rp.RP_DEC_128
-    #     acq_trig_sour = rp.RP_TRIG_SRC_NOW
-    #     N = 4096 # 16384
-
-    #     # Initialize Red Pitaya API
-    #     rp.rp_Init()
-    #     rp.rp_AcqReset()
-    #     rp.rp_AcqSetDecimation(dec)
-
-    #     if self.verbose:
-    #         print("\n--------Acquiring ADC data--------")
-        
-        
-    #     rp.rp_AcqSetTriggerSrc(acq_trig_sour)
-    
-    #     try:
-    #         while True:  # Keep acquiring & streaming
-    #             t0 = time.time()
-    #             rp.rp_AcqStart()
-    #             # Get new data from ADC
-    #             ch1_buffer = rp.fBuffer(N)
-    #             ch2_buffer = rp.fBuffer(N)
-
-    #             rp.rp_AcqGetLatestDataV(rp.RP_CH_1, N, ch1_buffer)
-    #             rp.rp_AcqGetLatestDataV(rp.RP_CH_2, N, ch2_buffer)
-
-    #             # Convert to list for streaming
-    #             ch1_data = [ch1_buffer[i] for i in range(N)]
-    #             ch2_data = [ch2_buffer[i] for i in range(N)]
-
-    #             # Store the data as attribute to class
-    #             self.ch1_data = ch1_data
-    #             self.ch2_data = ch2_data
-
-    #             t1 = time.time()
-                    
-    #             if self.verbose:
-    #                 print("ADC data acquired successfully.")
-    #             if self.very_verbose:
-    #                 # print first 20 values of each channel
-    #                 print(f"Acquisition time: {t1 - t0:.2f} seconds")
-    #                 print("First 20 values of ADC 1 data:", ch1_data[:20])
-    #                 print("First 20 values of ADC 2 data:", ch2_data[:20])
-
-    #             if not continuous:
-    #                 break
-                                 
-
-    #     except (BrokenPipeError, ConnectionResetError):
-    #         print("Client disconnected.")
-    #     except Exception as e:
-    #         print(f"Error acquiring signals: {e}")
-    #     finally:
-    #         rp.rp_Release()
-    #         print("Red Pitaya resources released.")
-    
-    #     return None
-    
-
     
     def _get_adc_data(self, continuous=False):
         """Read the ADC data from the memory."""    
@@ -502,7 +440,8 @@ class PiccoloRP:
                 t0 = time.time()
                 rp.rp_AcqReset()
                 rp.rp_AcqSetDecimation(dec)
-
+                rp.rp_AcqSetGain(rp.RP_CH_1, rp.RP_HIGH)
+                rp.rp_AcqSetGain(rp.RP_CH_2, rp.RP_HIGH)
                 rp.rp_AcqStart()
                 
                 
@@ -549,7 +488,9 @@ class PiccoloRP:
                     # print first 20 values of each channel
                     print(f"Acquisition time: {t1 - t0:.2f} seconds")
                     print("First 20 values of ADC 1 data:", ch1_data[:20])
+                    print("Max of ADC 1 data:", max(ch1_data))
                     print("First 20 values of ADC 2 data:", ch2_data[:20])
+                    print(f"Max of ADC 2 data: {max(ch2_data)}")
 
                 if not continuous:
                     break

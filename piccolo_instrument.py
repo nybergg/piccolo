@@ -18,15 +18,6 @@ from piccolo_clients import (
     ControlCommandClient
 )
 
-
-###
-# TODO:
-# - enable the asynchronous transfer of the script to the red pitaya and running it compared to spinning up the clients.
-#   do these really all need to be in the same class?? feels like they should be separate. it's hard for me to organize them in my mind
-#   and see how they can be cleanly used together.
-# - In general, the file transfer and running on the rp works cleanly. need to figure out the whole osc client / server thing.
-# - 
-
 class Instrument:
     def __init__(self, 
                  local_script="piccolo_rp.py",
@@ -90,40 +81,10 @@ class Instrument:
     
     
     def get_rp_calibration(self):
-        """SSH into the Red Pitaya and get calibration values for the ADCs"""
-        
-        # Connect to the Red Pitaya and add directory if missing
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.ip, username=self.username, password=self.password)
-        ssh.exec_command(f"mkdir -p {self.rp_dir}")
-
-        _, stdout, stderr = ssh.exec_command("/opt/redpitaya/bin/calib -rv")
-
-        output = stdout.read().decode()
-        errors = stderr.read().decode()
-
-        ssh.close()
-
-        if errors:
-            print("Errors:", errors)
-            return None
-
-        calib_data = {}
-        for line in output.strip().splitlines():
-            match = re.match(r"(\w+)\s*=\s*(-?\d+)", line.strip())
-            if match:
-                key, value = match.groups()
-                calib_data[key] = int(value)
-                
+        """Hardcode the Red Pitaya calibration values for CH1 and CH2"""
         calibration_values = {}
-
-        for channel in range(1,3):
-            gain_key = f"FE_CH{channel}_FS_G_LO"
-            offset_key = f"FE_CH{channel}_DC_offs"
-            gain = calib_data[gain_key] 
-            offset = calib_data[offset_key]
-            calibration_values[f"CH{channel}"] = [gain, offset]
+        calibration_values["CH1"] = [-100, 1.012201]
+        calibration_values["CH2"] = [-10, 0.999356]
 
         self.calibration_values = calibration_values
 
@@ -131,7 +92,6 @@ class Instrument:
         if self.verbose:
             print("\nRed Pitaya calibration values loaded successfully")
         if self.very_verbose:
-            print("Calibration data:", calib_data)
             print(f"Calibration values: {calibration_values}")
 
         return self.calibration_values
@@ -270,20 +230,18 @@ class Instrument:
 
         try:
             row = fpgaoutput
-            
+
             for ch in (0, 1):
-                ch_key = f"CH{ch+1}"
-                _, offset = self.calibration_values[ch_key]
 
                 # Intensity
                 raw_int = fpgaoutput[f"cur_droplet_intensity[{ch}]"]
                 row[f"cur_droplet_intensity[{ch}]"] = raw_int
-                row[f"cur_droplet_intensity_v[{ch}]"] = (raw_int - offset) / 8192.0
+                row[f"cur_droplet_intensity_v[{ch}]"] = self.convert_raw_to_volts(raw_int, ch)
 
                 # Area
                 raw_area = fpgaoutput[f"cur_droplet_area[{ch}]"]
                 row[f"cur_droplet_area[{ch}]"] = raw_area
-                row[f"cur_droplet_area_vms[{ch}]"] = raw_area / 8192.0 / 1000.0
+                row[f"cur_droplet_area_vms[{ch}]"] = self.convert_raw_to_volts(raw_area, ch) / 1000.0
 
                 # Width
                 raw_width = fpgaoutput[f"cur_droplet_width[{ch}]"]
@@ -325,8 +283,6 @@ class Instrument:
         for i, key in enumerate(sort_keys):
             # Parse channel index
             ch = int(key[key.find('[')+1:key.find(']')])
-            ch_key = f"CH{ch+1}"
-            _, offset = self.calibration_values[ch_key]
 
             # Select x/y based on index
             low_coord = 'x0' if i == 0 else 'y0'
@@ -334,19 +290,16 @@ class Instrument:
             low_val = limits[low_coord][0]
             high_val = limits[high_coord][0]
 
-            # Unit conversion
-            def convert(val, key):
-                if "_vms" in key:
-                    return val * 8192.0 * 1000
-                elif "_ms" in key:
-                    return val * 1000
-                elif "_v" in key:
-                    return val * 8192.0 + offset
-                else:
-                    return val
-
-            low_converted = int(convert(low_val, key))
-            high_converted = int(convert(high_val, key))
+            # Convert if needed
+            if "_vms" in key:
+                low_val = int(self.convert_volts_to_raw(low_val, ch) * 1000)
+                high_val = int(self.convert_volts_to_raw(high_val, ch) * 1000)
+            elif "_ms" in key:
+                low_val = int(low_val * 1000)
+                high_val = int(high_val * 1000)
+            elif "_v" in key:
+                low_val = self.convert_volts_to_raw(low_val, ch)
+                high_val = self.convert_volts_to_raw(high_val, ch)
 
             # Determine parameter type
             if "intensity" in key:
@@ -358,14 +311,15 @@ class Instrument:
             else:
                 raise ValueError(f"Unrecognized key: {key}")
 
-            sort_gates[f"low_{param}_thresh[{ch}]"] = low_converted
-            sort_gates[f"high_{param}_thresh[{ch}]"] = high_converted
+            sort_gates[f"low_{param}_thresh[{ch}]"] = low_val
+            sort_gates[f"high_{param}_thresh[{ch}]"] = high_val
 
         if self.verbose:
             print(f"[Instrument] Setting sort gates: {sort_gates}")
+        
         # Write sort_gates to FPGA memory
         for var, val in sort_gates.items():
-            self.set_memory_variable(var, val)
+            self.set_memory_variable(var, int(val))
 
         # Save for inspection
         self.sort_gates = sort_gates
@@ -379,15 +333,32 @@ class Instrument:
             print(f"[Instrument] Setting detection threshold for {thresh_key}: {thresh_key}")
         
         ch = int(thresh_key[thresh_key.find('[')+1:thresh_key.find(']')])
-        ch_key = f"CH{ch+1}"    
-        _, offset = self.calibration_values[ch_key]
-        thresh = thresh * 8192.0 + offset
+        thresh_raw = self.convert_volts_to_raw(thresh, ch)    
 
         # Write sort_gates to FPGA memory
-        self.set_memory_variable(thresh_key, int(thresh))
+        self.set_memory_variable(thresh_key, thresh_raw)
         
         return thresh
     
+    def convert_raw_to_volts(self, raw_value, ch):
+        """Convert raw ADC value to volts using calibration values."""
+        vp = 20.0  # 40V peak-to-peak
+        adc_max = 8192.0  # Max ADC value
+        ch_key = f"CH{ch+1}"
+        offset, gain = self.calibration_values[ch_key]
+        volt_value = (raw_value - offset) * gain / adc_max * vp
+        
+        return volt_value
+    
+    def convert_volts_to_raw(self, volt_value, ch):
+        """Convert volts to raw ADC value using calibration values."""
+        vp = 20.0  # 40V peak-to-peak
+        adc_max = 8192.0  # Max ADC value
+        ch_key = f"CH{ch+1}"
+        offset, gain = self.calibration_values[ch_key]
+        raw_value = (volt_value * adc_max / vp) / gain + offset
+        
+        return int(raw_value)
 
 if __name__ == "__main__":
     instrument = Instrument(
