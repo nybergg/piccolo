@@ -336,7 +336,7 @@ class Instrument:
         thresh_raw = self.convert_volts_to_raw(thresh, ch)    
 
         # Write sort_gates to FPGA memory
-        self.set_memory_variable(thresh_key, thresh_raw)
+        self.set_memory_variable(thresh_key, int(thresh))
         
         return thresh
     
