@@ -66,7 +66,7 @@ class Instrument:
         """ Get the local information for the Red Pitaya and run the script on it"""
         
         # Load the Red Pitaya login information from a JSON file
-        with open("redpitaya/rp_login_lab.json", "r") as f:
+        with open("redpitaya/rp_login_4CH.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
@@ -87,8 +87,8 @@ class Instrument:
     def get_rp_calibration(self):
         """Hardcode the Red Pitaya calibration values for CH1 and CH2"""
         calibration_values = {}
-        calibration_values["CH1"] = [-100, 1.012201]
-        calibration_values["CH2"] = [-10, 0.999356]
+        calibration_values["CH1"] = [-10, 1.0]
+        calibration_values["CH2"] = [-10, 1.0]
         calibration_values["CH3"] = [-10, 1.0] # Placeholder, adjust as needed
         calibration_values["CH4"] = [-10, 1.0] # Placeholder, adjust as needed
 

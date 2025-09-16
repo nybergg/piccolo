@@ -25,7 +25,6 @@ module red_pitaya_fads #(
     // System bus 
     input      [32-1:0]     sys_addr,
     input      [32-1:0]     sys_wdata,
-    input      [4-1:0]      sys_sel,
     input                   sys_wen,
     input                   sys_ren,
     output reg [32-1:0]     sys_rdata,
