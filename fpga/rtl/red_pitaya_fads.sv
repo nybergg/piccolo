@@ -6,7 +6,7 @@ module red_pitaya_fads #(
     parameter RSZ = 14,
     parameter DWT = 14,
     parameter MEM = 32,
-    parameter CHNL = 2,      // Now only two channels
+    parameter CHNL = 4,      // Now four channels
     parameter ALIG = 4'h4,
     parameter MAVG_WINDOW_SIZE = 128, // Window size for the filter. MUST be a power of 2. 128 cc ~ 1us
     parameter MAVG_SHIFT_BITS = 7    // log2(MAVG_WINDOW_SIZE). This is the bit-shift amount for division.
@@ -14,8 +14,10 @@ module red_pitaya_fads #(
     // ADC inputs – now two independent channels
     input                   clk_i,          // ADC Clock
     input                   rstn_i,         // ADC Reset - active low
-    input signed [14-1:0]   dat_a_i,        // ADC Channel A
-    input signed [14-1:0]   dat_b_i,        // ADC Channel B
+    input signed [14-1:0]   dat_a_i,        // ADC Channel A (0)
+    input signed [14-1:0]   dat_b_i,        // ADC Channel B (1)
+    input signed [14-1:0]   dat_c_i,        // ADC Channel C (2)
+    input signed [14-1:0]   dat_d_i,        // ADC Channel D (3)
     output reg              sort_trig,      // Trigger for sorting
     output reg              camera_trig,
     output reg  [8-1:0]     debug,          // At the moment the current state of the state machine
@@ -63,12 +65,10 @@ reg             fads_reset                  = 1'b0;     // Reset signal for FADS
 // Multi Channel registers and wires
 reg  [CHNL-1:0] active_channels_o;
 wire [CHNL-1:0] droplet_sensing_channel;                // Channel for droplet sensing
-reg  [3-1:0]    droplet_sensing_address;                // Address for droplet sensing
-reg  [CHNL-1:0] enabled_channels;                       // Enabled channels
-wire [1:0]      other_channel;
-assign          droplet_sensing_channel     = 2'b01 << droplet_sensing_address;
-assign          other_channel               = (droplet_sensing_address == 3'd0) ? 3'd1 : 3'd0;
-assign          active_channels_o           = 2'b11;
+reg  [3-1:0]    droplet_sensing_addr;                   // Address for droplet sensing
+reg  [CHNL-1:0] enabled_channels;                       // Enabled channels, one bit per channel
+assign          droplet_sensing_channel     = (1 << droplet_sensing_addr); // one-hot encode the sensing channel
+assign          active_channels_o           = '1; // All channels are active outputs
 
 // Intensity (result of droplet classification) for all channels
 wire [CHNL-1:0]      min_intensity;
@@ -164,7 +164,11 @@ generate
         reg signed [DWT-1:0] mavg_window [MAVG_WINDOW_SIZE-1:0];
 
         // Wire for the current raw ADC input for this channel
-        wire signed [DWT-1:0] current_dat_i = (ch == 0) ? dat_a_i : dat_b_i;
+        wire signed [DWT-1:0] current_dat_i;
+        if (ch == 0) assign current_dat_i = dat_a_i;
+        else if (ch == 1) assign current_dat_i = dat_b_i;
+        else if (ch == 2) assign current_dat_i = dat_c_i;
+        else if (ch == 3) assign current_dat_i = dat_d_i;
 
         // The main filter logic
         always @(posedge clk_i) begin
@@ -203,11 +207,13 @@ endgenerate
 
 always @(posedge clk_i) begin
   if (!rstn_i) begin
-    adc_values[0] <= 0;
-    adc_values[1] <= 0;
+    for (integer i = 0; i < CHNL; i = i + 1) begin
+        adc_values[i] <= 0;
+    end
   end else begin
-    adc_values[0] <= filtered_adc_values[0]; 
-    adc_values[1] <= filtered_adc_values[1]; 
+    for (integer i = 0; i < CHNL; i = i + 1) begin
+        adc_values[i] <= filtered_adc_values[i];
+    end
   end
 end
 
@@ -245,22 +251,19 @@ always @(posedge clk_i) begin
         3'd0: begin
             debug <= 8'b00000001;
             if (fads_reset || !rstn_i) begin
-                state <= 3'd0;
-                active_channels_o <= 2'b11;  // Both channels enabled
+                state <= 3'd0;                
                 sort_trig <= 1'b1;
                 camera_trig <= 1'b0;
                 
                 droplet_id              <= 32'd0;
-                cur_droplet_intensity   <= '{default: 32'd0}; // Reset all channels
-                cur_droplet_width       <= '{default: 32'd0}; // Reset all channels
-                cur_droplet_area        <= '{default: 32'd0}; // Reset all channels
+                cur_droplet_intensity   <= '{default:0};
+                cur_droplet_width       <= '{default:0};
+                cur_droplet_area        <= '{default:0};
                 droplet_classification  <=  8'd0;
 
-                // initialize with the most negative number possible in 14 bit
-                // ADC input is signed, that is why 2-complement must be used
-                signal_width[0] <= 32'd0;  signal_width[1] <= 32'd0;
-                signal_area[0]  <= 32'd0;  signal_area[1]  <= 32'd0;
-                signal_max[0]   <= -14'sd8192;  signal_max[1] <= -14'sd8192;
+                signal_width <= '{default:0};
+                signal_area  <= '{default:0};
+                signal_max   <= '{default:-14'sd8192};
                 
             end else if (droplet_acquisition_enable) begin
                 state <= 3'd1;
@@ -272,15 +275,15 @@ always @(posedge clk_i) begin
             debug <= 8'b00000010;
             if (fads_reset || !rstn_i)
                 state <= 3'd0;
-            else if (adc_values[droplet_sensing_address] >= min_intensity_threshold[droplet_sensing_address]) begin
-                signal_width <= '{default: 32'd0}; // Reset all channels
-                signal_area  <= '{default: 32'd0}; // Reset all channels
-                signal_max   <= '{default: -14'sd8192}; // Reset all channels
+            else if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
+                signal_width <= '{default:0};
+                signal_area  <= '{default:0};
+                signal_max   <= '{default:-14'sd8192};
                         
                 // Reset and start droplet evaluation for the sensing channel
-                signal_width[droplet_sensing_address] <= 32'd1;
-                signal_area[droplet_sensing_address]  <= adc_values[droplet_sensing_address];
-                signal_max[droplet_sensing_address]   <= adc_values[droplet_sensing_address];
+                signal_width[droplet_sensing_addr] <= 32'd1;
+                signal_area[droplet_sensing_addr]  <= adc_values[droplet_sensing_addr];
+                signal_max[droplet_sensing_addr]   <= adc_values[droplet_sensing_addr];
                 state <= 3'd2;
             end
             
@@ -293,18 +296,18 @@ always @(posedge clk_i) begin
             if (fads_reset || !rstn_i)
                 state <= 3'd0;  
             else begin
-                // Intensity updates for both channels
-                if (adc_values[0] > signal_max[0])
-                    signal_max[0] <= adc_values[0];
-                if (adc_values[1] > signal_max[1])
-                    signal_max[1] <= adc_values[1];
+                // Intensity updates for all channels
+                for (i = 0; i < CHNL; i = i + 1) begin
+                    if (adc_values[i] > signal_max[i])
+                        signal_max[i] <= adc_values[i];
+                end
 
                 // Based on the droplet-sensing channel signal: increment width and accumulate area for all channels.
-                if (adc_values[droplet_sensing_address] >= min_intensity_threshold[droplet_sensing_address]) begin
-                    signal_width[0] <= signal_width[0] + 32'd1;
-                    signal_width[1] <= signal_width[1] + 32'd1;
-                    signal_area[0]  <= signal_area[0] + adc_values[0];
-                    signal_area[1]  <= signal_area[1] + adc_values[1];
+                if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
+                    for (i = 0; i < CHNL; i = i + 1) begin
+                        signal_width[i] <= signal_width[i] + 32'd1;
+                        signal_area[i]  <= signal_area[i] + adc_values[i];
+                    end
                 end else begin
                     state <= 3'd3;
                 end
@@ -318,9 +321,9 @@ always @(posedge clk_i) begin
             else begin
                 debug <= 8'b00001000;
                 // Only update droplet outputs if the droplet meets all the threshold requirements:
-                if ((signal_width[droplet_sensing_address] >= min_width_threshold[droplet_sensing_address]) &&
-                    (signal_max[droplet_sensing_address]  >= min_intensity_threshold[droplet_sensing_address]) &&
-                    (signal_area[droplet_sensing_address] >= min_area_threshold[droplet_sensing_address]) &&
+                if ((signal_width[droplet_sensing_addr] >= min_width_threshold[droplet_sensing_addr]) &&
+                    (signal_max[droplet_sensing_addr]  >= min_intensity_threshold[droplet_sensing_addr]) &&
+                    (signal_area[droplet_sensing_addr] >= min_area_threshold[droplet_sensing_addr]) &&
                     (droplet_positive || droplet_negative)) begin
                     droplet_id <= droplet_id + 32'd1;
                     for (i = 0; i < CHNL; i = i + 1) begin
@@ -405,55 +408,74 @@ always @(posedge clk_i)
     // Necessary handling of reset signal
     if (rstn_i == 1'b0) begin
         // Resetting to default values
-        min_intensity_threshold  <= '{CHNL{-14'sd175}}; // Should roughly correspond to -0.5V
-        low_intensity_threshold  <= '{CHNL{-14'sd150}}; // On the specific RedPitaya I'm testing on
-        high_intensity_threshold  <= '{CHNL{ 14'sd900}};
+        min_intensity_threshold  <= '{default:-14'sd175}; // Should roughly correspond to -0.5V
+        low_intensity_threshold  <= '{default:-14'sd150}; // On the specific RedPitaya I'm testing on
+        high_intensity_threshold  <= '{default: 14'sd900};
 
-        min_width_threshold  <= '{CHNL{32'h000004E2}}; // 1,250 clock cycles = 10 us
-        low_width_threshold  <= '{CHNL{32'h000030D4}}; // 12,500 clock cycles = 100 us
-        high_width_threshold  <= '{CHNL{32'hccddeeff}};
+        min_width_threshold  <= '{default:32'h000004E2}; // 1,250 clock cycles = 10 us
+        low_width_threshold  <= '{default:32'h000030D4}; // 12,500 clock cycles = 100 us
+        high_width_threshold  <= '{default:32'hccddeeff};
 
-        min_area_threshold  <= '{CHNL{32'h00000001}};
-        low_area_threshold  <= '{CHNL{32'h000000ff}};
-        high_area_threshold  <= '{CHNL{32'hccddeeff}};
+        min_area_threshold  <= '{default:32'h00000001};
+        low_area_threshold  <= '{default:32'h000000ff};
+        high_area_threshold  <= '{default:32'hccddeeff};
                
-        enabled_channels <= 6'b000011;
-        droplet_sensing_address <= 3'h0;
+        enabled_channels <= '1;
+        droplet_sensing_addr <= 3'h0;
 
     end else if (sys_wen) begin
         // Writing to system bus
         if (sys_addr[19:0]==20'h00020)                    fads_reset    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00024)                    sort_delay    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00028)                 sort_duration    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h0002C)                   sort_enable    <= sys_wdata[0:0];
         if (sys_addr[19:0]==20'h00300)              enabled_channels    <= sys_wdata[CHNL-1:0];
-        if (sys_addr[19:0]==20'h00304)       droplet_sensing_address    <= sys_wdata[   3-1:0];
+        if (sys_addr[19:0]==20'h00304)          droplet_sensing_addr    <= sys_wdata[   3-1:0];
 
         if (sys_addr[19:0]==20'h01000)    min_intensity_threshold[0]    <= sys_wdata[DWT-1:0];
         if (sys_addr[19:0]==20'h01004)    min_intensity_threshold[1]    <= sys_wdata[DWT-1:0];
+        if (sys_addr[19:0]==20'h01008)    min_intensity_threshold[2]    <= sys_wdata[DWT-1:0];
+        if (sys_addr[19:0]==20'h0100C)    min_intensity_threshold[3]    <= sys_wdata[DWT-1:0];
 
         if (sys_addr[19:0]==20'h01020)    low_intensity_threshold[0]    <= sys_wdata[DWT-1:0];
         if (sys_addr[19:0]==20'h01024)    low_intensity_threshold[1]    <= sys_wdata[DWT-1:0];
+        if (sys_addr[19:0]==20'h01028)    low_intensity_threshold[2]    <= sys_wdata[DWT-1:0];
+        if (sys_addr[19:0]==20'h0102C)    low_intensity_threshold[3]    <= sys_wdata[DWT-1:0];
 
         if (sys_addr[19:0]==20'h01040)   high_intensity_threshold[0]    <= sys_wdata[DWT-1:0];
         if (sys_addr[19:0]==20'h01044)   high_intensity_threshold[1]    <= sys_wdata[DWT-1:0];
+        if (sys_addr[19:0]==20'h01048)   high_intensity_threshold[2]    <= sys_wdata[DWT-1:0];
+        if (sys_addr[19:0]==20'h0104C)   high_intensity_threshold[3]    <= sys_wdata[DWT-1:0];
 
         if (sys_addr[19:0]==20'h01060)        min_width_threshold[0]    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h01064)        min_width_threshold[1]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h01068)        min_width_threshold[2]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h0106C)        min_width_threshold[3]    <= sys_wdata[MEM-1:0];
 
         if (sys_addr[19:0]==20'h01080)        low_width_threshold[0]    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h01084)        low_width_threshold[1]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h01088)        low_width_threshold[2]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h0108C)        low_width_threshold[3]    <= sys_wdata[MEM-1:0];
 
         if (sys_addr[19:0]==20'h010a0)       high_width_threshold[0]    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h010a4)       high_width_threshold[1]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h010a8)       high_width_threshold[2]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h010aC)       high_width_threshold[3]    <= sys_wdata[MEM-1:0];
 
         if (sys_addr[19:0]==20'h010c0)         min_area_threshold[0]    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h010c4)         min_area_threshold[1]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h010c8)         min_area_threshold[2]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h010cC)         min_area_threshold[3]    <= sys_wdata[MEM-1:0];
 
         if (sys_addr[19:0]==20'h010e0)         low_area_threshold[0]    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h010e4)         low_area_threshold[1]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h010e8)         low_area_threshold[2]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h010eC)         low_area_threshold[3]    <= sys_wdata[MEM-1:0];
 
         if (sys_addr[19:0]==20'h01100)        high_area_threshold[0]    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h01104)        high_area_threshold[1]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h01108)        high_area_threshold[2]    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h0110C)        high_area_threshold[3]    <= sys_wdata[MEM-1:0];
     end
 
 // Writing to system bus
@@ -468,53 +490,80 @@ always @(posedge clk_i)
         //   Address  |       handling bus signals        | creating 32 bit wide word containing the data
             20'h01000: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  min_intensity_threshold[0]}  ; end // these inputs are written back to the system bus as standard procedure in FPGA development
             20'h01004: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  min_intensity_threshold[1]}  ; end
+            20'h01008: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  min_intensity_threshold[2]}  ; end
+            20'h0100C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  min_intensity_threshold[3]}  ; end
 
             20'h01020: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  low_intensity_threshold[0]}  ; end
             20'h01024: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  low_intensity_threshold[1]}  ; end
+            20'h01028: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  low_intensity_threshold[2]}  ; end
+            20'h0102C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},  low_intensity_threshold[3]}  ; end
 
             20'h01040: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}}, high_intensity_threshold[0]}  ; end
             20'h01044: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}}, high_intensity_threshold[1]}  ; end
+            20'h01048: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}}, high_intensity_threshold[2]}  ; end
+            20'h0104C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}}, high_intensity_threshold[3]}  ; end
 
             20'h01060: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      min_width_threshold[0]}  ; end
             20'h01064: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      min_width_threshold[1]}  ; end
+            20'h01068: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      min_width_threshold[2]}  ; end
+            20'h0106C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      min_width_threshold[3]}  ; end
 
             20'h01080: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      low_width_threshold[0]}  ; end
             20'h01084: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      low_width_threshold[1]}  ; end
+            20'h01088: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      low_width_threshold[2]}  ; end
+            20'h0108C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      low_width_threshold[3]}  ; end
 
             20'h010a0: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     high_width_threshold[0]}  ; end
             20'h010a4: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     high_width_threshold[1]}  ; end
+            20'h010a8: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     high_width_threshold[2]}  ; end
+            20'h010aC: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     high_width_threshold[3]}  ; end
 
             20'h010c0: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       min_area_threshold[0]}  ; end
             20'h010c4: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       min_area_threshold[1]}  ; end
+            20'h010c8: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       min_area_threshold[2]}  ; end
+            20'h010cC: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       min_area_threshold[3]}  ; end
 
             20'h010e0: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       low_area_threshold[0]}  ; end
             20'h010e4: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       low_area_threshold[1]}  ; end
+            20'h010e8: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       low_area_threshold[2]}  ; end
+            20'h010eC: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},       low_area_threshold[3]}  ; end
 
             20'h01100: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[0]}  ; end
             20'h01104: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[1]}  ; end
+            20'h01108: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[2]}  ; end
+            20'h0110C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[3]}  ; end
 
             20'h00020: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               fads_reset}     ; end // used for trouble shooting and in the interface to reset sorter and values including droplet id
             20'h00024: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               sort_delay}     ; end
             20'h00028: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},            sort_duration}     ; end
+            20'h0002C: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},              sort_enable}     ; end
             20'h00200: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},               droplet_id}     ; end // unique droplet identifier of the last fully analysed droplet
             
             20'h00204: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[0]} ; end // output of the droplet sorter for each channel
             20'h00208: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[1]} ; end
+            20'h0020C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[2]} ; end
+            20'h00210: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[3]} ; end
 
             20'h0021C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[0]} ; end
             20'h00220: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[1]} ; end
+            20'h00224: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[2]} ; end
+            20'h00228: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[3]} ; end
 
             20'h00234: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[0]} ; end
             20'h00238: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[1]} ; end
+            20'h0023C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[2]} ; end
+            20'h00240: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[3]} ; end
 
             20'h0024C: begin sys_ack <= sys_en;  sys_rdata <= {{32-  16{1'b0}},   droplet_classification}     ; end // results of the state machine droplet classification
             20'h00250: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},              cur_time_us}     ; end // real time value fast changing
 
-            20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},         enabled_channels}     ; end // bolean, starting with channel one as the digit (0/1) on the right
-            20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},  droplet_sensing_address}     ; end // number 0-5 this indicates the master channel which should be seleced to have a homogenious, droplet-wide fluorescence signal, not beads or cells. It's used to define where droplets start and finish across channels 
+            20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},         enabled_channels}     ; end // boolean, starting with channel one as the digit (0/1) on the right
+            20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},     droplet_sensing_addr}     ; end // number 0-3, indicates the master channel for droplet detection
 
             20'h0030C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[0]}     ; end // ADC value for each channel seperately (only one active at a time during multiplexing)
             20'h00310: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[1]}     ; end
+            20'h00314: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[2]}     ; end
+            20'h00318: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[3]}     ; end
 
             default:   begin sys_ack <= sys_en;  sys_rdata <= 32'h0                                 ; end
         endcase

@@ -171,12 +171,12 @@ def video_feed():
 
 # Define Axis Options
 axis_options_list = [
-    "cur_droplet_intensity[0]", "cur_droplet_intensity[1]",
-    "cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]",
-    "cur_droplet_width[0]", "cur_droplet_width[1]",
-    "cur_droplet_width_ms[0]", "cur_droplet_width_ms[1]",
-    "cur_droplet_area[0]", "cur_droplet_area[1]",
-    "cur_droplet_area_vms[0]", "cur_droplet_area_vms[1]",
+    "cur_droplet_intensity[0]", "cur_droplet_intensity[1]", "cur_droplet_intensity[2]", "cur_droplet_intensity[3]",
+    "cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]", "cur_droplet_intensity_v[2]", "cur_droplet_intensity_v[3]",
+    "cur_droplet_width[0]", "cur_droplet_width[1]", "cur_droplet_width[2]", "cur_droplet_width[3]",
+    "cur_droplet_width_ms[0]", "cur_droplet_width_ms[1]", "cur_droplet_width_ms[2]", "cur_droplet_width_ms[3]",
+    "cur_droplet_area[0]", "cur_droplet_area[1]", "cur_droplet_area[2]", "cur_droplet_area[3]",
+    "cur_droplet_area_vms[0]", "cur_droplet_area_vms[1]", "cur_droplet_area_vms[2]", "cur_droplet_area_vms[3]",
 ]
 axis_options_dict = [{'label': i, 'value': i} for i in axis_options_list]
 initial_x_key = "cur_droplet_intensity_v[0]"
@@ -187,6 +187,7 @@ app.layout = dbc.Container([
     dcc.Store(id='timer-store', data=[]),
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
     dcc.Store(id='axis-keys-store', data={'x': initial_x_key, 'y': initial_y_key}),
+    html.Div(id='sorter-callback-dummy-output', style={'display': 'none'}), # Dummy div for callbacks
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
     html.H3("Piccolo", style={'textAlign': 'center', 'marginBottom': '20px'}), # Centered main title
 
@@ -195,11 +196,20 @@ app.layout = dbc.Container([
         dbc.Col([
             html.H5("Controls"),
             html.Hr(),
+            dbc.Row([
+                dbc.Col(html.Label("Sorter", className="fw-bold"), width="auto"),
+                dbc.Col(dbc.Switch(id='sorter-switch', value=True, className="ms-1"), width="auto"),
+            ], align="center", className="mb-3"),
+            html.Hr(),
             html.Label("488nm Laser Power:"),
             dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("520nm Laser Power:"),
             dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("SiPM 0 Threshold:"),
+            html.Label("Detection Threshold Channel:"),
+            dcc.Dropdown(id='threshold-channel-dropdown',
+                         options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
+                         value=0, clearable=False, className="mb-2"),
+            html.Label("Detection Threshold (V):"),
             dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Datapoint Count:"),
             dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
@@ -300,17 +310,25 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
 
     with lock:
         if simulate:
-            adc1 = instrument.signal[0]; adc2 = instrument.signal[1]; df = instrument.droplet_data
+            # Assuming sim provides 4 channels now
+            adc1, adc2, adc3, adc4 = instrument.signal[0], instrument.signal[1], instrument.signal[2], instrument.signal[3]
+            df = instrument.droplet_data
         else:
-            adc1 = instrument.adc1_data; adc2 = instrument.adc2_data; df = instrument.droplet_data
+            adc1 = instrument.adc1_data
+            adc2 = instrument.adc2_data
+            adc3 = instrument.adc3_data
+            adc4 = instrument.adc4_data
+            df = instrument.droplet_data
 
     x_key = axis_keys['x']
     y_key = axis_keys['y']
     time_axis = np.linspace(0, 50, 4096)
 
     signal_fig = go.Figure()
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='SiPM0', line=dict(color='mediumseagreen')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='SiPM1', line=dict(color='royalblue')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='CH0', line=dict(color='mediumseagreen')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='CH1', line=dict(color='royalblue')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc3, mode='lines', name='CH2', line=dict(color='firebrick')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc4, mode='lines', name='CH3', line=dict(color='goldenrod')))
     signal_fig.add_hline(y=threshold_value, line_dash="dot", line_color="mediumseagreen", annotation_text="Threshold")
     signal_fig.update_layout(title="SiPM Data", xaxis_title="Time (ms)", yaxis_title="Voltage", yaxis_range=[0, 1.2], legend_title="Signals", uirevision='signal_layout')
     update_text = f"Update Rate: {1 / s_per_update:.01f} Hz ({s_per_update * 1000:.00f} ms)" if s_per_update > 0 else "Calculating..."
@@ -368,21 +386,30 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
 
 @app.callback(
         Output('laser0-slider', 'value'), 
-        [Input('laser0-slider', 'value'), 
-         Input('laser1-slider', 'value'), 
-         Input('threshold-slider', 'value')], 
+        [Input('laser0-slider', 'value'),
+         Input('laser1-slider', 'value')],
          prevent_initial_call=True
 )
-def update_sliders(g0, g1, thresh):
+def update_sliders(g0, g1):
     ctx = dash.callback_context; trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     with lock:
-            if simulate:
-                if trigger_id == 'laser0-slider': instrument.set_sipm_gain(0, g0)
-                elif trigger_id == 'laser1-slider': instrument.set_sipm_gain(1, g1)
-                elif trigger_id == 'threshold-slider': instrument.set_threshold(thresh)
-            else:
-                if trigger_id == 'threshold-slider': instrument.set_detection_threshold(thresh=thresh, thresh_key="min_intensity_thresh[0]")
+        if instrument:
+            if trigger_id == 'laser0-slider': instrument.set_sipm_gain(0, g0)
+            elif trigger_id == 'laser1-slider': instrument.set_sipm_gain(1, g1)
     return g0
+
+@app.callback(
+    Output('threshold-slider', 'className'), # Dummy output, no change needed
+    [Input('threshold-slider', 'value')],
+    [State('threshold-channel-dropdown', 'value')],
+    prevent_initial_call=True
+)
+def update_detection_threshold(threshold_volts, channel):
+    with lock:
+        if instrument:
+            thresh_key = f"min_intensity_thresh[{channel}]"
+            instrument.set_detection_threshold(thresh=threshold_volts, thresh_key=thresh_key)
+    return "" # No actual class change needed
 
 @app.callback(
         Output('buffer-spinner', 'className'), 
@@ -463,6 +490,19 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
         except Exception as e: msg = f"Error saving data: {e}"
     print(msg)
     return msg
+
+@app.callback(
+    Output('sorter-callback-dummy-output', 'children'),
+    [Input('sorter-switch', 'value')],
+    prevent_initial_call=True
+)
+def toggle_sorter_callback(is_enabled):
+    """Callback to enable/disable the sorter via the UI switch."""
+    with lock:
+        if instrument:
+            instrument.enable_sorter(is_enabled)
+    return dash.no_update # No visible output needed
+
 
 
 ################ Cleanup and Signal Handling ################

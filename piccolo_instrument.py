@@ -53,6 +53,10 @@ class Instrument:
         # Setup droplet data buffer
         self.buffer_size = 1000  # or set from UI
         self.droplet_data = pd.DataFrame()
+        self.adc1_data = []
+        self.adc2_data = []
+        self.adc3_data = []
+        self.adc4_data = []
 
 
 
@@ -85,6 +89,8 @@ class Instrument:
         calibration_values = {}
         calibration_values["CH1"] = [-100, 1.012201]
         calibration_values["CH2"] = [-10, 0.999356]
+        calibration_values["CH3"] = [-10, 1.0] # Placeholder, adjust as needed
+        calibration_values["CH4"] = [-10, 1.0] # Placeholder, adjust as needed
 
         self.calibration_values = calibration_values
 
@@ -208,6 +214,14 @@ class Instrument:
         print(f"[Instrument] Queued memory variable set: {variable} = {value}")
 
 
+    def enable_sorter(self, enable: bool):
+        """Enable or disable the droplet sorter on the FPGA."""
+        value_to_set = 1 if enable else 0
+        self.set_memory_variable("sort_enable", value_to_set)
+        status = "enabled" if enable else "disabled"
+        print(f"[Instrument] Sorter has been {status}.")
+
+
     def stop_servers(self):
         """Send kill command to Red Pitaya."""
         self.control_command_client.start(self.ip)
@@ -218,11 +232,13 @@ class Instrument:
     
     ################ Red Pitaya ADC Data Handling Methods ################
 
-    def _get_adc_data(self, adc1_data, adc2_data):
+    def _get_adc_data(self, adc1_data, adc2_data, adc3_data, adc4_data):
         self.adc1_data = adc1_data
         self.adc2_data = adc2_data
+        self.adc3_data = adc3_data
+        self.adc4_data = adc4_data
 
-        return self.adc1_data, self.adc2_data
+        return self.adc1_data, self.adc2_data, self.adc3_data, self.adc4_data
 
     def _get_memory_data(self, fpgaoutput):
         if not fpgaoutput:
@@ -231,7 +247,7 @@ class Instrument:
         try:
             row = fpgaoutput
 
-            for ch in (0, 1):
+            for ch in range(4):
 
                 # Intensity
                 raw_int = fpgaoutput[f"cur_droplet_intensity[{ch}]"]
@@ -268,9 +284,12 @@ class Instrument:
     def save_adc_log(self, filename="adc_log.csv"):
         # Assuming adc1_data and adc2 _data have 4096 points
         time_data = np.linspace(0, 50, 4096)
-        df = pd.DataFrame({'time': time_data,
-                            'adc1': self.adc1_data,
-                            'adc2': self.adc2_data})
+        adc_data = {'time': time_data,
+                    'adc1': self.adc1_data,
+                    'adc2': self.adc2_data,
+                    'adc3': self.adc3_data,
+                    'adc4': self.adc4_data}
+        df = pd.DataFrame({k: v for k, v in adc_data.items() if v is not None and len(v) == len(time_data)})
         df.to_csv(filename, index=False)
     
     
@@ -336,7 +355,7 @@ class Instrument:
         thresh_raw = self.convert_volts_to_raw(thresh, ch)    
 
         # Write sort_gates to FPGA memory
-        self.set_memory_variable(thresh_key, int(thresh))
+        self.set_memory_variable(thresh_key, int(thresh_raw))
         
         return thresh
     
@@ -408,46 +427,6 @@ if __name__ == "__main__":
                 print(f"[Test] Ch1 Max: {np.max(ch1):.4f}, Ch2 Max: {np.max(ch2):.4f}")
             else:
                 print("[Test] No data yet.")
-
-
-        # ############ TESTING MEM STREAM CLIENT ############
-        # print("\n[Test] Memory Stream Client testing.")
-
-        # # Read the droplet data buffer
-        # print(f"[Test] Droplet data buffer length: {len(instrument.droplet_data)}")
-        # print(instrument.droplet_data.head(30))
-        # instrument.save_droplet_data_log("droplet_log_0603.csv")
-
-        
-        # ############ TESTING MEMORY COMMAND CLIENT ############
-        # print("\n[Test] Memory Command Client testing.")
-
-        # var_name = "low_intensity_thresh[0]"
-        # var_value = 1234
-        
-        # try:
-        #     # Read initial value
-        #     fpgaoutput = instrument.memory_stream_client.fpgaoutput
-        #     print(f"[Test] Initial Memory Value for {var_name}: {fpgaoutput[var_name]}")
-            
-        #     # Send a test variable update
-        #     instrument.set_memory_variable(var_name, var_value)
-        #     print("[Test] Set {var_value} to {var_value}")
-        #     time.sleep(0.5)  # Give time for the command to be sent
-
-        #     # Read updated value
-        #     fpgaoutput = instrument.memory_stream_client.fpgaoutput
-        #     print(f"[Test] Updated Memory Value for {var_name}: {fpgaoutput[var_name]}")
-
-        # finally:
-        #     print("[Test] Memory Command Client stopped.")
-        #     instrument.stop_clients()
-
-        # time.sleep(1)  # Give time for the clients to stop
-
-
-        # ############ TESTING THRESHOLD SETTING ############
-        # instrument.set_detection_threshold(thresh=0.1, thresh_key='min_intensity_thresh[0]')
 
 
             

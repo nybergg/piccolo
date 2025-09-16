@@ -143,6 +143,7 @@ class PiccoloRP:
             "32'sd": { "fmt": "<i", "bits": 32, "signed": True,  "bool": False },
             "16'b":  { "fmt": "<H", "bits": 16, "signed": False, "bool": True  },
             "14'sd": { "fmt": "<h", "bits": 14, "signed": True,  "bool": False },
+            "4'b":   { "fmt": "<B", "bits": 4,  "signed": False, "bool": True  },
             "3'b":   { "fmt": "<B", "bits": 3,  "signed": False, "bool": True  },
             "2'b":   { "fmt": "<B", "bits": 2,  "signed": False, "bool": True  },
             "1'b":   { "fmt": "<B", "bits": 1,  "signed": False, "bool": True  }
@@ -291,8 +292,11 @@ class PiccoloRP:
 
         # For binary (bool) types, interpret the value as a binary literal.
         if is_bool:
-            # If value is not a string, convert it to string
-            val = int(value, 2)
+            # Handle both string ('0', '1') and integer (0, 1) inputs
+            if isinstance(value, str):
+                val = int(value, 2)
+            else:
+                val = int(value)
         else:
             val = value
 
@@ -440,8 +444,10 @@ class PiccoloRP:
                 t0 = time.time()
                 rp.rp_AcqReset()
                 rp.rp_AcqSetDecimation(dec)
-                rp.rp_AcqSetGain(rp.RP_CH_1, rp.RP_HIGH)
+                rp.rp_AcqSetGain(rp.RP_CH_1, rp.RP_HIGH) # Assuming HV jumpers
                 rp.rp_AcqSetGain(rp.RP_CH_2, rp.RP_HIGH)
+                rp.rp_AcqSetGain(rp.RP_CH_3, rp.RP_HIGH)
+                rp.rp_AcqSetGain(rp.RP_CH_4, rp.RP_HIGH)
                 rp.rp_AcqStart()
                 
                 
@@ -464,21 +470,29 @@ class PiccoloRP:
                 # Get new data from ADC
                 ch1_buffer = rp.fBuffer(N)
                 ch2_buffer = rp.fBuffer(N)
+                ch3_buffer = rp.fBuffer(N)
+                ch4_buffer = rp.fBuffer(N)
 
                 # 4. Read the N_SAMPLES for each channel from the same calculated start position.
                 # The size argument (N_SAMPLES) now correctly matches the fBuffer size.
                 rp.rp_AcqGetDataV(rp.RP_CH_1, read_start_pos, N, ch1_buffer)
                 rp.rp_AcqGetDataV(rp.RP_CH_2, read_start_pos, N, ch2_buffer)
+                rp.rp_AcqGetDataV(rp.RP_CH_3, read_start_pos, N, ch3_buffer)
+                rp.rp_AcqGetDataV(rp.RP_CH_4, read_start_pos, N, ch4_buffer)
             
                 rp.rp_AcqUnlockTrigger()
 
                 # Convert to list for streaming
                 ch1_data = [ch1_buffer[i] for i in range(sub_N)]
                 ch2_data = [ch2_buffer[i] for i in range(sub_N)]
+                ch3_data = [ch3_buffer[i] for i in range(sub_N)]
+                ch4_data = [ch4_buffer[i] for i in range(sub_N)]
 
                 # Store the data as attribute to class
                 self.ch1_data = ch1_data
                 self.ch2_data = ch2_data
+                self.ch3_data = ch3_data
+                self.ch4_data = ch4_data
 
                 t1 = time.time()
                     
@@ -491,6 +505,10 @@ class PiccoloRP:
                     print("Max of ADC 1 data:", max(ch1_data))
                     print("First 20 values of ADC 2 data:", ch2_data[:20])
                     print(f"Max of ADC 2 data: {max(ch2_data)}")
+                    print("First 20 values of ADC 3 data:", ch3_data[:20])
+                    print(f"Max of ADC 3 data: {max(ch3_data)}")
+                    print("First 20 values of ADC 4 data:", ch4_data[:20])
+                    print(f"Max of ADC 4 data: {max(ch4_data)}")
 
                 if not continuous:
                     break
@@ -558,9 +576,9 @@ class PiccoloRP:
         try:
             while True:
                 # send the latest available data
-                if hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data'):
-                    combined_data = self.ch1_data + self.ch2_data
-                    client.sendall(struct.pack(f'{2*len(self.ch1_data)}f', *combined_data))
+                if hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data') and hasattr(self, 'ch3_data') and hasattr(self, 'ch4_data'):
+                    combined_data = self.ch1_data + self.ch2_data + self.ch3_data + self.ch4_data
+                    client.sendall(struct.pack(f'{4*len(self.ch1_data)}f', *combined_data))
         except Exception as e:
             print(f"[ADCStream] Error: {e}")
         finally:
