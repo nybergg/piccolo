@@ -23,7 +23,6 @@ from pypylon import pylon
 import cv2
 
 # Piccolo imports
-import concurrency_tools as ct
 from piccolo_instrument_sim import InstrumentSim
 from piccolo_instrument import Instrument
 print("Successfully imported all modules.")
@@ -40,7 +39,7 @@ camera_available = True
 SERVER_URL = "http://127.0.0.1:8050/"
 
 if simulate:
-    instrument = ct.ObjectInSubprocess(InstrumentSim)
+    instrument = InstrumentSim()
     instrument.start_generating()
 else:
     instrument = Instrument(rp_dir="piccolo_testing", verbose=True)
@@ -190,95 +189,105 @@ app.layout = dbc.Container([
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
     dcc.Store(id='axis-keys-store', data={'x': initial_x_key, 'y': initial_y_key}),
     dcc.Store(id='sorter-state-store', data=True), # Sorter is ON by default
+    dcc.Interval(id='counter-interval-component', interval=1000, n_intervals=0),
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
     html.H3("Piccolo", style={'textAlign': 'center', 'marginBottom': '20px'}), # Centered main title
 
-    dbc.Tabs(id="tabs-main", active_tab='tab-dashboard', children=[
-        dbc.Tab(label='Dashboard', tab_id='tab-dashboard', children=[
+    dbc.Row([
+        # Controls Column (Left)
+        dbc.Col([
+            html.H5("Controls"),
+            html.Hr(),
+            html.H6("Droplet Counters"),
             dbc.Row([
-                # Controls Column (Left)
-                dbc.Col([
-                    html.H5("Controls"),
-                    html.Hr(),
-                    dbc.Button("Sorter: ON", id="sorter-button", color="success", className="w-100 mb-3"),
-                    html.Hr(),
-                    html.Label("488nm Laser Power:"),
-                    dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-                    html.Label("520nm Laser Power:"),
-                    dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-                    html.Label("Detection Threshold Channel:"),
-                    dcc.Dropdown(id='threshold-channel-dropdown',
-                                 options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
-                                 value=0, clearable=False, className="mb-2"),
-                    html.Label("Detection Threshold (V):"),
-                    dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-                    html.Label("Datapoint Count:"),
-                    dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
-                    html.Hr(),
-                    html.H6("Scatter Plot Settings"),
-                    html.Label("X-Axis Data:"),
-                    dcc.Dropdown(id='x-axis-dropdown', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
-                    html.Label("Y-Axis Data:"),
-                    dcc.Dropdown(id='y-axis-dropdown', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
-                    dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-                    dbc.Row([ dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', size="sm", step="any"), width=6), ], className="mb-2"),
-                    dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-                    dbc.Row([ dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', size="sm", step="any"), width=6), ], className="mb-3"),
-                    html.Hr(),
-                    html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
-                    html.Hr(),
-                    html.H6("Log Files"),
-                    html.Label("Scatter Log Filename:"),
-                    dbc.Input(id='scatter-filename-input', type='text', value="droplet_log.csv", className="mb-1"),
-                    dbc.Button('Save Scatter Log', id='save-scatter-button', n_clicks=0, color="success", className="w-100 mb-3"),
-                    html.Label("Signal Log Filename:"),
-                    dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
-                    dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
-                    html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
-                ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
+                dbc.Col(html.Div("Total:", style={'fontWeight': 'bold'}), width=5),
+                dbc.Col(html.Div("...", id='droplet-count-div'), width=7),
+            ], className="mb-1", align="center"),
+            dbc.Row([
+                dbc.Col(html.Div("Sorted:", style={'fontWeight': 'bold'}), width=5),
+                dbc.Col(html.Div("...", id='sorted-droplet-count-div'), width=7),
+            ], className="mb-1", align="center"),
+            dbc.Row([
+                dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'}), width=5),
+                dbc.Col(html.Div("... Hz", id='droplet-frequency-div'), width=7),
+            ], className="mb-1", align="center"),
+            dbc.Button("Reset Counters", id="reset-counters-button", color="warning", size="sm", className="w-100 mt-2 mb-3"),
+            html.Div(id='reset-status-div', className="mb-2"),
+            html.Hr(),
+            dbc.Button("Sorter: ON", id="sorter-button", color="success", className="w-100 mb-3"),
+            html.Hr(),
+            html.Label("488nm Laser Power:"),
+            dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+            html.Label("520nm Laser Power:"),
+            dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+            html.Label("Detection Threshold Channel:"),
+            dcc.Dropdown(id='threshold-channel-dropdown',
+                         options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
+                         value=0, clearable=False, className="mb-2"),
+            html.Label("Detection Threshold (V):"),
+            dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+            html.Label("Datapoint Count:"),
+            dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
+            html.Hr(),
+            html.H6("Scatter Plot Settings"),
+            html.Label("X-Axis Data:"),
+            dcc.Dropdown(id='x-axis-dropdown', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
+            html.Label("Y-Axis Data:"),
+            dcc.Dropdown(id='y-axis-dropdown', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
+            dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+            dbc.Row([ dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', size="sm", step="any"), width=6), ], className="mb-2"),
+            dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+            dbc.Row([ dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', size="sm", step="any"), width=6), ], className="mb-3"),
+            html.Hr(),
+            html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
+            html.Hr(),
+            html.H6("Log Files"),
+            html.Label("Scatter Log Filename:"),
+            dbc.Input(id='scatter-filename-input', type='text', value="droplet_log.csv", className="mb-1"),
+            dbc.Button('Save Scatter Log', id='save-scatter-button', n_clicks=0, color="success", className="w-100 mb-3"),
+            html.Label("Signal Log Filename:"),
+            dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
+            dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
+            html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
+            html.Hr(),
+            html.H5("FPGA Register Control", className="mt-3"),
+            html.P("Values are updated every 5 seconds. Enter a new value and press 'Set' to update a register on the FPGA."),
+            html.Div(id='fpga-set-status', className="mb-2"),
+            html.Div(id='fpga-register-div'),
+        ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
 
-                # Plots Column (Middle)
-                dbc.Col([
-                    html.H6("Droplet Data"),
-                    dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
-                    html.Hr(className="my-2"),
-                    html.H6("SiPM Signals"),
-                    dcc.Graph(id='signal-plot', style={'height': '28vh'}), # Adjusted height
-                    html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
-                ], md=6),
+        # Plots Column (Middle)
+        dbc.Col([
+            html.H6("Droplet Data"),
+            dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
+            html.Hr(className="my-2"),
+            html.H6("SiPM Signals"),
+            dcc.Graph(id='signal-plot', style={'height': '28vh'}), # Adjusted height
+            html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
+        ], md=6),
 
-                # Camera Column (Right)
-                dbc.Col([
-                    html.H6("Basler Camera Live View"),
-                    html.Img(
-                        src="/video_feed" if camera_available else "",
-                        id='camera-feed-img',
-                        style={
-                            'width': '100%',
-                            'border': '1px solid #555',
-                            'display': 'block' if camera_available else 'none',
-                            'minHeight': '240px', # Set a minimum height
-                            'backgroundColor': '#000' if camera_available else 'transparent', # Black background while loading/if small
-                            'aspectRatio': '4/3', # Try to maintain aspect ratio
-                            'objectFit': 'contain', # Scale image to fit within bounds, maintaining aspect ratio
-                            'maxHeight': '75vh' # Constrain camera height
-                        }
-                    ),
-                    html.P(
-                        "Camera disabled: pypylon or OpenCV not installed.",
-                        style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not camera_available else 'none'}
-                    )
-                ], md=3)
-            ]),
-        ]),
-        dbc.Tab(label='FPGA Registers', tab_id='tab-fpga', children=[
-            html.Div([
-                html.H5("FPGA Register Control", className="mt-3"),
-                html.P("Values are updated every 5 seconds. Enter a new value and press 'Set' to update a register on the FPGA."),
-                html.Div(id='fpga-set-status', className="mb-2"),
-                html.Div(id='fpga-register-div')
-            ], style={'padding': '20px'})
-        ]),
+        # Camera Column (Right)
+        dbc.Col([
+            html.H6("Basler Camera Live View"),
+            html.Img(
+                src="/video_feed" if camera_available else "",
+                id='camera-feed-img',
+                style={
+                    'width': '100%',
+                    'border': '1px solid #555',
+                    'display': 'block' if camera_available else 'none',
+                    'minHeight': '240px', # Set a minimum height
+                    'backgroundColor': '#000' if camera_available else 'transparent', # Black background while loading/if small
+                    'aspectRatio': '4/3', # Try to maintain aspect ratio
+                    'objectFit': 'contain', # Scale image to fit within bounds, maintaining aspect ratio
+                    'maxHeight': '75vh' # Constrain camera height
+                }
+            ),
+            html.P(
+                "Camera disabled: pypylon or OpenCV not installed.",
+                style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not camera_available else 'none'}
+            )
+        ], md=3)
     ]),
 ], fluid=True)
 
@@ -522,6 +531,65 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
     print(msg)
     return msg
 
+@app.callback(
+    Output('reset-status-div', 'children'),
+    Input('reset-counters-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def reset_counters(n_clicks):
+    if n_clicks is None:
+        raise exceptions.PreventUpdate
+    
+    msg = ""
+    with lock:
+        if instrument:
+            try:
+                # This assumes a register named 'reset_counters' exists on the FPGA.
+                # Writing a '1' to it should trigger the reset logic.
+                instrument.set_memory_variable('reset_counters', 1)
+                msg = dbc.Alert("Counter reset command sent.", color="info", dismissable=True, duration=3000)
+                print("Counter reset command sent to FPGA.")
+            except Exception as e:
+                error_msg = f"Error resetting counters: {e}"
+                msg = dbc.Alert(error_msg, color="danger", dismissable=True, duration=5000)
+                print(error_msg)
+        else:
+            msg = dbc.Alert("Instrument not available.", color="warning", dismissable=True, duration=3000)
+
+    return msg
+
+@app.callback(
+    [Output('droplet-count-div', 'children'),
+     Output('sorted-droplet-count-div', 'children'),
+     Output('droplet-frequency-div', 'children')],
+    Input('counter-interval-component', 'n_intervals')
+)
+def update_counters(n):
+    # Default values
+    count_str, sorted_str, freq_str = "...", "...", "... Hz"
+
+    # Note: This polls all registers every second, which may have a performance impact.
+    # A more optimized instrument class could fetch these specific registers 
+    # more efficiently in its background data acquisition thread.
+    with lock:
+        if instrument:
+            try:
+                # This reads ALL registers via the instrument object, which handles both simulation and real hardware.
+                # Assumes these registers exist on the FPGA and are part of the conversion map.
+                converted_registers = instrument.get_fpga_registers_converted()
+
+                droplet_count = converted_registers.get('droplet_count', ("N/A", ""))[0]
+                sorted_droplet_count = converted_registers.get('sorted_droplet_count', ("N/A", ""))[0]
+                droplet_freq = converted_registers.get('droplet_frequency_hz', ("N/A", ""))[0]
+
+                count_str = f"{droplet_count:,}" if isinstance(droplet_count, int) else str(droplet_count)
+                sorted_str = f"{sorted_droplet_count:,}" if isinstance(sorted_droplet_count, int) else str(sorted_droplet_count)
+                freq_str = f"{droplet_freq:.1f} Hz" if isinstance(droplet_freq, (int, float)) else str(droplet_freq)
+            except Exception as e:
+                print(f"Could not update counters from FPGA: {e}")
+                count_str, sorted_str, freq_str = "Error", "Error", "Error"
+    
+    return count_str, sorted_str, freq_str
 
 @app.callback(
     Output('fpga-register-div', 'children'),
