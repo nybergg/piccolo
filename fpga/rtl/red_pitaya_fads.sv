@@ -519,7 +519,13 @@ always @(posedge clk_i)
     if (rstn_i == 1'b0) begin
         sys_err <= 1'b0;
         sys_ack <= 1'b0;
+        fads_reset <= 1'b0; 
+    end else if (sys_wen) begin
+        if (sys_addr[19:0] == 20'h00020) begin
+            fads_reset <= sys_wdata[0]; // Set the fads_reset flag
+        end
     end else begin
+        fads_reset <= 1'b0; 
         sys_err <= 1'b0;
         casez (sys_addr[19:0])
         //   Address  |       handling bus signals        | creating 32 bit wide word containing the data
