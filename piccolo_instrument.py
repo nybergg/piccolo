@@ -58,6 +58,27 @@ class Instrument:
         self.adc3_data = []
         self.adc4_data = []
 
+        # FPGA register cache
+        self.fpga_registers = {
+            "fads_reset": 0,
+            "sort_delay": 100,
+            "sort_duration": 50,
+            "sort_enable": 1,
+            "enabled_channels": 15,
+            "droplet_sensing_addr": 0,
+        }
+        for i in range(4):
+            self.fpga_registers[f"min_intensity_thresh[{i}]"] = -175
+            self.fpga_registers[f"low_intensity_thresh[{i}]"] = -150
+            self.fpga_registers[f"high_intensity_thresh[{i}]"] = 900
+            self.fpga_registers[f"min_width_thresh[{i}]"] = 1250
+            self.fpga_registers[f"low_width_thresh[{i}]"] = 12500
+            self.fpga_registers[f"high_width_thresh[{i}]"] = 0xccddeeff
+            self.fpga_registers[f"min_area_thresh[{i}]"] = 1
+            self.fpga_registers[f"low_area_thresh[{i}]"] = 255
+            self.fpga_registers[f"high_area_thresh[{i}]"] = 0xccddeeff
+
+
 
 
     ################ Red Pitaya Setup and Run Methods ################
@@ -212,7 +233,59 @@ class Instrument:
         """Set FPGA memory variable."""
         self.memory_command_client.send_set_command(variable, value)
         print(f"[Instrument] Queued memory variable set: {variable} = {value}")
+        # Update internal cache
+        if variable in self.fpga_registers:
+            self.fpga_registers[variable] = value
 
+    def get_fpga_registers(self):
+        """Return the cached dictionary of FPGA register values."""
+        return self.fpga_registers
+
+    def get_fpga_registers_converted(self):
+        """
+        Return a dictionary of FPGA registers with human-readable values and units.
+        Returns a dictionary where each value is a tuple: (converted_value, unit_string).
+        """
+        display_registers = {}
+        raw_registers = self.get_fpga_registers()
+
+        for name, value in raw_registers.items():
+            # Default: no conversion
+            display_value = value
+            unit = ""
+
+            # Try to extract channel number
+            ch_match = re.search(r'\[(\d)\]', name)
+            ch = int(ch_match.group(1)) if ch_match else None
+
+            try:
+                # Ensure value is a number for conversions
+                numeric_value = int(value)
+
+                if ch is not None:
+                    if 'intensity_thresh' in name:
+                        display_value = self.convert_raw_to_volts(numeric_value, ch)
+                        unit = "V"
+                    elif 'area_thresh' in name:
+                        # Based on cur_droplet_area conversion
+                        display_value = self.convert_raw_to_volts(numeric_value, ch) / 1000.0
+                        unit = "V·ms"
+                    elif 'width_thresh' in name:
+                        # Based on cur_droplet_width conversion, raw is in us
+                        display_value = numeric_value / 1000.0
+                        unit = "ms"
+                elif 'sort_delay' in name or 'sort_duration' in name:
+                    # Assuming these are in microseconds
+                    display_value = numeric_value / 1000.0
+                    unit = "ms"
+            except (ValueError, TypeError):
+                # Value is not a number (e.g., binary string from get_var), keep as is
+                display_value = value
+                unit = ""
+
+            display_registers[name] = (display_value, unit)
+
+        return display_registers
 
     def enable_sorter(self, enable: bool):
         """Enable or disable the droplet sorter on the FPGA."""

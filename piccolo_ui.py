@@ -7,6 +7,8 @@ import time
 import pandas as pd
 import signal
 import webbrowser
+import re
+import json
 from threading import Timer
 import logging
 
@@ -187,87 +189,96 @@ app.layout = dbc.Container([
     dcc.Store(id='timer-store', data=[]),
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
     dcc.Store(id='axis-keys-store', data={'x': initial_x_key, 'y': initial_y_key}),
-    html.Div(id='sorter-callback-dummy-output', style={'display': 'none'}), # Dummy div for callbacks
+    dcc.Store(id='sorter-state-store', data=True), # Sorter is ON by default
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
     html.H3("Piccolo", style={'textAlign': 'center', 'marginBottom': '20px'}), # Centered main title
 
-    dbc.Row([
-        # Controls Column (Left)
-        dbc.Col([
-            html.H5("Controls"),
-            html.Hr(),
+    dbc.Tabs(id="tabs-main", active_tab='tab-dashboard', children=[
+        dbc.Tab(label='Dashboard', tab_id='tab-dashboard', children=[
             dbc.Row([
-                dbc.Col(html.Label("Sorter", className="fw-bold"), width="auto"),
-                dbc.Col(dbc.Switch(id='sorter-switch', value=True, className="ms-1"), width="auto"),
-            ], align="center", className="mb-3"),
-            html.Hr(),
-            html.Label("488nm Laser Power:"),
-            dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("520nm Laser Power:"),
-            dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("Detection Threshold Channel:"),
-            dcc.Dropdown(id='threshold-channel-dropdown',
-                         options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
-                         value=0, clearable=False, className="mb-2"),
-            html.Label("Detection Threshold (V):"),
-            dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("Datapoint Count:"),
-            dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
-            html.Hr(),
-            html.H6("Scatter Plot Settings"),
-            html.Label("X-Axis Data:"),
-            dcc.Dropdown(id='x-axis-dropdown', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
-            html.Label("Y-Axis Data:"),
-            dcc.Dropdown(id='y-axis-dropdown', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
-            dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-            dbc.Row([ dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', size="sm", step="any"), width=6), ], className="mb-2"),
-            dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-            dbc.Row([ dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', size="sm", step="any"), width=6), ], className="mb-3"),
-            html.Hr(),
-            html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
-            html.Hr(),
-            html.H6("Log Files"),
-            html.Label("Scatter Log Filename:"),
-            dbc.Input(id='scatter-filename-input', type='text', value="droplet_log.csv", className="mb-1"),
-            dbc.Button('Save Scatter Log', id='save-scatter-button', n_clicks=0, color="success", className="w-100 mb-3"),
-            html.Label("Signal Log Filename:"),
-            dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
-            dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
-            html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
-        ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
+                # Controls Column (Left)
+                dbc.Col([
+                    html.H5("Controls"),
+                    html.Hr(),
+                    dbc.Button("Sorter: ON", id="sorter-button", color="success", className="w-100 mb-3"),
+                    html.Hr(),
+                    html.Label("488nm Laser Power:"),
+                    dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                    html.Label("520nm Laser Power:"),
+                    dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                    html.Label("Detection Threshold Channel:"),
+                    dcc.Dropdown(id='threshold-channel-dropdown',
+                                 options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
+                                 value=0, clearable=False, className="mb-2"),
+                    html.Label("Detection Threshold (V):"),
+                    dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                    html.Label("Datapoint Count:"),
+                    dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
+                    html.Hr(),
+                    html.H6("Scatter Plot Settings"),
+                    html.Label("X-Axis Data:"),
+                    dcc.Dropdown(id='x-axis-dropdown', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
+                    html.Label("Y-Axis Data:"),
+                    dcc.Dropdown(id='y-axis-dropdown', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
+                    dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+                    dbc.Row([ dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', size="sm", step="any"), width=6), ], className="mb-2"),
+                    dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+                    dbc.Row([ dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', size="sm", step="any"), width=6), ], className="mb-3"),
+                    html.Hr(),
+                    html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
+                    html.Hr(),
+                    html.H6("Log Files"),
+                    html.Label("Scatter Log Filename:"),
+                    dbc.Input(id='scatter-filename-input', type='text', value="droplet_log.csv", className="mb-1"),
+                    dbc.Button('Save Scatter Log', id='save-scatter-button', n_clicks=0, color="success", className="w-100 mb-3"),
+                    html.Label("Signal Log Filename:"),
+                    dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
+                    dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
+                    html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
+                ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
 
-        # Plots Column (Middle)
-        dbc.Col([
-            html.H6("Droplet Data"),
-            dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
-            html.Hr(className="my-2"),
-            html.H6("SiPM Signals"),
-            dcc.Graph(id='signal-plot', style={'height': '28vh'}), # Adjusted height
-            html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
-        ], md=6),
+                # Plots Column (Middle)
+                dbc.Col([
+                    html.H6("Droplet Data"),
+                    dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
+                    html.Hr(className="my-2"),
+                    html.H6("SiPM Signals"),
+                    dcc.Graph(id='signal-plot', style={'height': '28vh'}), # Adjusted height
+                    html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
+                ], md=6),
 
-        # Camera Column (Right)
-        dbc.Col([
-            html.H6("Basler Camera Live View"),
-            html.Img(
-                src="/video_feed" if camera_available else "",
-                id='camera-feed-img',
-                style={
-                    'width': '100%',
-                    'border': '1px solid #555',
-                    'display': 'block' if camera_available else 'none',
-                    'minHeight': '240px', # Set a minimum height
-                    'backgroundColor': '#000' if camera_available else 'transparent', # Black background while loading/if small
-                    'aspectRatio': '4/3', # Try to maintain aspect ratio
-                    'objectFit': 'contain', # Scale image to fit within bounds, maintaining aspect ratio
-                    'maxHeight': '75vh' # Constrain camera height
-                }
-            ),
-            html.P(
-                "Camera disabled: pypylon or OpenCV not installed.",
-                style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not camera_available else 'none'}
-            )
-        ], md=3)
+                # Camera Column (Right)
+                dbc.Col([
+                    html.H6("Basler Camera Live View"),
+                    html.Img(
+                        src="/video_feed" if camera_available else "",
+                        id='camera-feed-img',
+                        style={
+                            'width': '100%',
+                            'border': '1px solid #555',
+                            'display': 'block' if camera_available else 'none',
+                            'minHeight': '240px', # Set a minimum height
+                            'backgroundColor': '#000' if camera_available else 'transparent', # Black background while loading/if small
+                            'aspectRatio': '4/3', # Try to maintain aspect ratio
+                            'objectFit': 'contain', # Scale image to fit within bounds, maintaining aspect ratio
+                            'maxHeight': '75vh' # Constrain camera height
+                        }
+                    ),
+                    html.P(
+                        "Camera disabled: pypylon or OpenCV not installed.",
+                        style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not camera_available else 'none'}
+                    )
+                ], md=3)
+            ]),
+        ]),
+        dbc.Tab(label='FPGA Registers', tab_id='tab-fpga', children=[
+            html.Div([
+                html.H5("FPGA Register Control", className="mt-3"),
+                html.P("Values are updated every 5 seconds. Enter a new value and press 'Set' to update a register on the FPGA."),
+                html.Div(id='fpga-set-status', className="mb-2"),
+                html.Div(id='fpga-register-div')
+            ], style={'padding': '20px'})
+        ]),
     ]),
 ], fluid=True)
 
@@ -423,6 +434,26 @@ def update_buffer(value):
     return "mb-2"
 
 @app.callback(
+    [Output('sorter-button', 'children'),
+     Output('sorter-button', 'color'),
+     Output('sorter-state-store', 'data')],
+    [Input('sorter-button', 'n_clicks')],
+    [State('sorter-state-store', 'data')],
+    prevent_initial_call=True
+)
+def toggle_sorter(n_clicks, is_on):
+    if n_clicks is None:
+        raise exceptions.PreventUpdate
+    new_state = not is_on
+    with lock:
+        if instrument:
+            instrument.enable_sorter(new_state)
+    if new_state:
+        return "Sorter: ON", "success", new_state
+    else:
+        return "Sorter: OFF", "secondary", new_state
+
+@app.callback(
     Output('gate-selection-store', 'data'),
     Input('scatter-plot', 'selectedData'),
     State('axis-keys-store', 'data'),
@@ -491,17 +522,119 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
     print(msg)
     return msg
 
+
 @app.callback(
-    Output('sorter-callback-dummy-output', 'children'),
-    [Input('sorter-switch', 'value')],
-    prevent_initial_call=True
+    Output('fpga-register-div', 'children'),
+    Input('interval-component', 'n_intervals')
 )
-def toggle_sorter_callback(is_enabled):
-    """Callback to enable/disable the sorter via the UI switch."""
+def update_fpga_register_display(n):
+    if n % 20 != 0: # Update every 5 seconds (20 * 250ms)
+        return dash.no_update
+
     with lock:
         if instrument:
-            instrument.enable_sorter(is_enabled)
-    return dash.no_update # No visible output needed
+            raw_registers = instrument.get_fpga_registers()
+            converted_registers = instrument.get_fpga_registers_converted()
+        else:
+            raw_registers = {}
+            converted_registers = {}
+
+    if not raw_registers:
+        return dbc.Alert("FPGA registers not available yet.", color="warning")
+
+    header = dbc.Row([
+        dbc.Col(html.B("Register Name"), width=3),
+        dbc.Col(html.B("Converted Value"), width=3),
+        dbc.Col(html.B("Raw Value"), width=2),
+        dbc.Col(html.B("New Value"), width=2),
+        dbc.Col(width=2), # for button
+    ], className="mb-2")
+
+    rows = [header, html.Hr()]
+    for name, raw_value in sorted(raw_registers.items()):
+        converted_value, unit = converted_registers.get(name, (raw_value, ""))
+
+        if isinstance(converted_value, float):
+            display_text = f"{converted_value:.3f} {unit}"
+            placeholder_text = f"{converted_value:.3f}"
+        else:
+            display_text = f"{converted_value} {unit}"
+            placeholder_text = f"{converted_value}"
+
+        # For inputs that are not numbers (e.g. binary strings), use text input
+        is_numeric = isinstance(converted_value, (int, float))
+        input_type = 'number' if is_numeric else 'text'
+
+        row = dbc.Row([
+            dbc.Col(html.Label(name), width=3, style={'word-wrap': 'break-word'}),
+            dbc.Col(html.Div(display_text), width=3),
+            dbc.Col(html.Div(f"{raw_value}"), width=2),
+            dbc.Col(dbc.Input(id={'type': 'fpga-input', 'index': name}, type=input_type, placeholder=placeholder_text, step="any")),
+            dbc.Col(dbc.Button("Set", id={'type': 'fpga-set-button', 'index': name}, size="sm", className="w-100"), width=2),
+        ], className="mb-2", align="center")
+        rows.append(row)
+
+    return html.Div(rows)
+
+@app.callback(
+    Output('fpga-set-status', 'children'),
+    Input({'type': 'fpga-set-button', 'index': dash.ALL}, 'n_clicks'),
+    [State({'type': 'fpga-input', 'index': dash.ALL}, 'value'),
+     State({'type': 'fpga-input', 'index': dash.ALL}, 'id')],
+    prevent_initial_call=True
+)
+def set_fpga_register(n_clicks, values, ids):
+    ctx = dash.callback_context
+    triggered = ctx.triggered[0]
+    if not triggered or not triggered['value']:
+        raise exceptions.PreventUpdate
+
+    triggered_id = json.loads(triggered['prop_id'].split('.')[0])
+    register_name = triggered_id['index']
+
+    value_to_set_str = next((val for i, val in enumerate(values) if ids[i]['index'] == register_name), None)
+
+    if value_to_set_str is not None:
+        try:
+            # User inputs the converted value, which should be a number
+            value_to_set = float(value_to_set_str)
+
+            # This will be converted back to a raw integer for the FPGA
+            final_value = value_to_set
+
+            # Reverse conversion logic
+            ch_match = re.search(r'\[(\d)\]', register_name)
+            ch = int(ch_match.group(1)) if ch_match else None
+
+            with lock:
+                if instrument:
+                    if ch is not None:
+                        if 'intensity_thresh' in register_name:
+                            final_value = instrument.convert_volts_to_raw(value_to_set, ch)
+                        elif 'area_thresh' in register_name:
+                            # User enters V·ms, convert to V, then to raw
+                            volts = value_to_set * 1000.0
+                            final_value = instrument.convert_volts_to_raw(volts, ch)
+                        elif 'width_thresh' in register_name:
+                            # User enters ms, convert to us for raw value
+                            final_value = value_to_set * 1000.0
+                    elif 'sort_delay' in register_name or 'sort_duration' in register_name:
+                        # User enters ms, convert to us for raw value
+                        final_value = value_to_set * 1000.0
+
+                    # For non-converted values, final_value remains value_to_set
+                    final_value_int = int(final_value)
+                    instrument.set_memory_variable(register_name, final_value_int)
+                    msg = f"Success: Set {register_name} to {value_to_set_str} (raw: {final_value_int})"
+                    print(msg)
+                    return dbc.Alert(msg, color="success", dismissable=True, duration=4000)
+
+        except (ValueError, TypeError) as e:
+            msg = f"Error: Invalid value for {register_name}: '{value_to_set_str}'. Must be a number. ({e})"
+            print(msg)
+            return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
+
+    return dash.no_update
 
 
 
