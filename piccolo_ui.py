@@ -20,7 +20,7 @@ import plotly.io as pio
 import dash_bootstrap_components as dbc
 from flask import Response # For MJPEG streaming
 from pypylon import pylon
-import cv2
+# import cv2
 
 # Piccolo imports
 from piccolo_instrument_sim import InstrumentSim
@@ -59,10 +59,10 @@ cam_thread = None
 # Create an initial placeholder image for the camera feed
 if camera_available:
     placeholder_img = np.zeros((240, 320, 3), dtype=np.uint8) # Small placeholder
-    cv2.putText(placeholder_img, "Waiting for Camera...", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 1)
-    ret_init, jpeg_init = cv2.imencode('.jpg', placeholder_img)
-    if ret_init:
-        latest_frame_jpeg = jpeg_init.tobytes()
+    # cv2.putText(placeholder_img, "Waiting for Camera...", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 1)
+    # ret_init, jpeg_init = cv2.imencode('.jpg', placeholder_img)
+    # if ret_init:
+    #     latest_frame_jpeg = jpeg_init.tobytes()
 
 # Camera Thread Function
 def camera_thread_func():
@@ -99,10 +99,10 @@ def camera_thread_func():
                     # img_resized = cv2.resize(img_array, (target_width, target_height))
                     # ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
 
-                    ret, jpeg = cv2.imencode('.jpg', img_array, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
-                    if ret:
-                        with frame_lock:
-                            latest_frame_jpeg = jpeg.tobytes()
+                    # ret, jpeg = cv2.imencode('.jpg', img_array, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
+                    # if ret:
+                    #     with frame_lock:
+                    #         latest_frame_jpeg = jpeg.tobytes()
                 grabResult.Release()
             except pylon.GenericException as e:
                 print(f"Pylon grab error: {e}")
@@ -119,11 +119,11 @@ def camera_thread_func():
         print(f"Pylon camera initialization error: {e}")
         # Fallback to error image
         error_img = np.zeros((240, 320, 3), dtype=np.uint8)
-        cv2.putText(error_img, "Camera Error", (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        ret, jpeg = cv2.imencode('.jpg', error_img)
-        if ret:
-            with frame_lock:
-                latest_frame_jpeg = jpeg.tobytes()
+        # cv2.putText(error_img, "Camera Error", (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        # ret, jpeg = cv2.imencode('.jpg', error_img)
+        # if ret:
+        #     with frame_lock:
+        #         latest_frame_jpeg = jpeg.tobytes()
     except Exception as e_outer:
         print(f"Outer camera thread error: {e_outer}")
     finally:
@@ -155,11 +155,11 @@ def generate_camera_frames():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes_to_send + b'\r\n')
         else: # If no frame, send the placeholder again or a very small blank JPEG
             placeholder_img_yield = np.zeros((50, 50, 3), dtype=np.uint8)
-            cv2.putText(placeholder_img_yield, "NC", (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100),1)
-            ret_yield, jpeg_yield = cv2.imencode('.jpg', placeholder_img_yield)
-            if ret_yield:
-                 yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg_yield.tobytes() + b'\r\n')
+            # cv2.putText(placeholder_img_yield, "NC", (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100),1)
+            # ret_yield, jpeg_yield = cv2.imencode('.jpg', placeholder_img_yield)
+            # if ret_yield:
+            #      yield (b'--frame\r\n'
+            #        b'Content-Type: image/jpeg\r\n\r\n' + jpeg_yield.tobytes() + b'\r\n')
 
 
 @app.server.route('/video_feed')
@@ -544,9 +544,7 @@ def reset_counters(n_clicks):
     with lock:
         if instrument:
             try:
-                # This assumes a register named 'reset_counters' exists on the FPGA.
-                # Writing a '1' to it should trigger the reset logic.
-                instrument.set_memory_variable('reset_counters', 1)
+                instrument.set_memory_variable('fads_reset', 1)
                 msg = dbc.Alert("Counter reset command sent.", color="info", dismissable=True, duration=3000)
                 print("Counter reset command sent to FPGA.")
             except Exception as e:
@@ -578,9 +576,9 @@ def update_counters(n):
                 # Assumes these registers exist on the FPGA and are part of the conversion map.
                 converted_registers = instrument.get_fpga_registers_converted()
 
-                droplet_count = converted_registers.get('droplet_count', ("N/A", ""))[0]
-                sorted_droplet_count = converted_registers.get('sorted_droplet_count', ("N/A", ""))[0]
-                droplet_freq = converted_registers.get('droplet_frequency_hz', ("N/A", ""))[0]
+                droplet_count = converted_registers.get('droplet_counter', ("N/A", ""))[0]
+                sorted_droplet_count = converted_registers.get('sorted_droplet_counter', ("N/A", ""))[0]
+                droplet_freq = converted_registers.get('droplet_frequency', ("N/A", ""))[0]
 
                 count_str = f"{droplet_count:,}" if isinstance(droplet_count, int) else str(droplet_count)
                 sorted_str = f"{sorted_droplet_count:,}" if isinstance(sorted_droplet_count, int) else str(sorted_droplet_count)

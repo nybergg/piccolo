@@ -156,8 +156,8 @@ class Instrument:
             # Construct command for background piccolo_rp.py process with logging
             args = " ".join(self.script_args)
             cmd = (
-                f'cd {self.rp_dir} && '
-                f'nohup sudo python3 {self.local_script} {args} '
+                f'cd {self.rp_dir} && ' 
+                f'nohup sudo python3 {self.local_script} {args} ' 
                 f'> piccolo_stdout.log 2> piccolo_stderr.log < /dev/null &'
             )
 
@@ -185,7 +185,7 @@ class Instrument:
                 print(f"[Paramiko stdout read error] {e}")
 
             # Ensure command completed
-            _ = stdout.channel.recv_exit_status()
+            _ = stdout.channel.recv_exit_status() 
             
             # Capture any final stdout and stderr output
             self.stdout = stdout.read().decode().strip()
@@ -316,6 +316,11 @@ class Instrument:
     def _get_memory_data(self, fpgaoutput):
         if not fpgaoutput:
             return
+        
+        # Update the FPGA register cache with the latest values
+        self.fpga_registers.update(fpgaoutput)
+        if self.very_verbose:
+            print(f"[Instrument] Received memory data: {fpgaoutput}")
 
         try:
             row = fpgaoutput
@@ -464,7 +469,7 @@ if __name__ == "__main__":
     )
 
     try:
-        print("\n-----------Running Piccolo Instrument-----------")
+        print("\n-----------Running Piccolo Instrument----------- ")
         ############ LAUNCHING PICCOLO METHODS ON RED PITAYA ############
         launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
 
@@ -486,7 +491,7 @@ if __name__ == "__main__":
              
         
         ############ TESTING ADC STREAM CLIENT ############
-        print("\n-----------Running Piccolo Tests-----------")
+        print("\n-----------Running Piccolo Tests----------- ")
         print("\n[Test] ADC Stream Client testing.")
 
         for _ in range(3):  # ~1 second if 0.1s stream interval

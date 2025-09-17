@@ -110,6 +110,13 @@ reg signed  [DWT-1:0]                signal_max [CHNL-1:0]; // Signal max intens
 // Registers to store average-filtered ADC values for each channel
 reg signed [DWT-1:0]                 adc_values [CHNL-1:0]; // 
 
+// Counter registers
+reg [MEM-1:0] droplet_counter = 32'd0;
+reg [MEM-1:0] sorted_droplet_counter = 32'd0;
+reg [MEM-1:0] frequency_counter = 32'd0;
+reg [MEM-1:0] frequency_timer_us = 32'd0;
+reg [MEM-1:0] droplet_frequency = 32'd0;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Assigning Variables
@@ -143,12 +150,10 @@ endgenerate
 assign droplet_positive = &positive_intensity && &positive_width && &positive_area;
 assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (|low_area || |high_area || |positive_area) && (~(&positive_intensity && &positive_width && &positive_area));
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // MOVING AVERAGE FILTERS
 ////////////////////////////////////////////////////////////////////////////////
-
-// This block implements two independent moving average filters, one for each ADC channel.
-// It uses a generate loop to create identical logic for each channel.
 
 wire signed [DWT-1:0] filtered_adc_values [CHNL-1:0]; // Wires to hold the output of each filter
 
@@ -199,7 +204,6 @@ generate
 endgenerate
 
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // ADC Sampling
 ////////////////////////////////////////////////////////////////////////////////
@@ -216,6 +220,7 @@ always @(posedge clk_i) begin
   end
 end
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // General Timer
 ////////////////////////////////////////////////////////////////////////////////
@@ -229,6 +234,27 @@ always @(posedge clk_i) begin
         if (general_timer_counter >= 8'd125) begin
             general_timer_us <= general_timer_us + 32'd1;
             general_timer_counter <= 8'd0;
+        end
+    end
+end
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Droplet Frequency Calculation
+////////////////////////////////////////////////////////////////////////////////
+always @(posedge clk_i) begin
+    if (fads_reset) begin
+        frequency_timer_us <= 32'd0;
+        frequency_counter <= 32'd0;
+        droplet_frequency <= 32'd0;
+    end else begin
+        if (general_timer_counter >= 8'd125) begin
+            frequency_timer_us <= frequency_timer_us + 32'd1;
+            if (frequency_timer_us == 32'd1000000) begin
+                droplet_frequency <= frequency_counter;
+                frequency_counter <= 32'd0;
+                frequency_timer_us <= 32'd0;
+            end
         end
     end
 end
@@ -255,6 +281,12 @@ always @(posedge clk_i) begin
                 camera_trig <= 1'b0;
                 
                 droplet_id              <= 32'd0;
+                droplet_counter <= 32'd0;
+                sorted_droplet_counter <= 32'd0;
+                frequency_counter <= 32'd0;
+                frequency_timer_us <= 32'd0;
+                droplet_frequency <= 32'd0;
+
                 cur_droplet_intensity   <= '{default:0};
                 cur_droplet_width       <= '{default:0};
                 cur_droplet_area        <= '{default:0};
@@ -325,6 +357,9 @@ always @(posedge clk_i) begin
                     (signal_area[droplet_sensing_addr] >= min_area_threshold[droplet_sensing_addr]) &&
                     (droplet_positive || droplet_negative)) begin
                     droplet_id <= droplet_id + 32'd1;
+                    droplet_counter <= droplet_counter + 32'd1;
+                    frequency_counter <= frequency_counter + 32'd1;
+                    
                     for (i = 0; i < CHNL; i = i + 1) begin
                         cur_droplet_width[i]     <= signal_width[i];
                         cur_droplet_intensity[i] <= signal_max[i];
@@ -356,6 +391,7 @@ always @(posedge clk_i) begin
                 
                 // Continue with state transition (sorting if enabled and droplet is positive)
                 if (sort_enable && droplet_positive) begin
+                    sorted_droplet_counter <= sorted_droplet_counter + 32'd1;
                     sort_delay_end_us <= general_timer_us + sort_delay;
                     state <= 3'd4;
                 end else begin
@@ -536,6 +572,7 @@ always @(posedge clk_i)
             20'h00024: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               sort_delay}     ; end
             20'h00028: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},            sort_duration}     ; end
             20'h0002C: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},              sort_enable}     ; end
+
             20'h00200: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},               droplet_id}     ; end // unique droplet identifier of the last fully analysed droplet
             
             20'h00204: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[0]} ; end // output of the droplet sorter for each channel
@@ -555,6 +592,10 @@ always @(posedge clk_i)
 
             20'h0024C: begin sys_ack <= sys_en;  sys_rdata <= {{32-  16{1'b0}},   droplet_classification}     ; end // results of the state machine droplet classification
             20'h00250: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},              cur_time_us}     ; end // real time value fast changing
+
+            20'h00254: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          droplet_counter}     ; end // number of fully analysed droplets
+            20'h00258: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},   sorted_droplet_counter}     ; end // number of sorted droplets
+            20'h0025C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        droplet_frequency}     ; end // time averaged frequency of droplets across ~1 sec
 
             20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},         enabled_channels}     ; end // boolean, starting with channel one as the digit (0/1) on the right
             20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},     droplet_sensing_addr}     ; end // number 0-3, indicates the master channel for droplet detection

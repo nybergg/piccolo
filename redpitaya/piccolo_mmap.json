@@ -115,6 +115,21 @@
         "units": "microseconds"
         },
         {
+        "name": "droplet_counter",
+        "addr": "0x000254",
+        "dtype": "32'd"
+        },
+        {
+        "name": "sorted_droplet_counter",
+        "addr": "0x000258",
+        "dtype": "32'd"
+        },
+        {
+        "name": "droplet_frequency",
+        "addr": "0x00025C",
+        "dtype": "32'd"
+        },
+        {
         "name": "cur_droplet_intensity",
         "addr": ["0x000204", "0x000208", "0x00020C", "0x000210"],
         "dtype": "32'sd",
