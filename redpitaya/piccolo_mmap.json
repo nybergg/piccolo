@@ -42,14 +42,14 @@
         "name": "min_intensity_thresh",
         "addr": ["0x001000", "0x001004", "0x001008", "0x00100C"],
         "dtype": "14'sd",
-        "default": [650, 689, 689, 689],
+        "default": [30, 30, 30, 30],
         "units": "raw"
         },
         {
         "name": "low_intensity_thresh",
         "addr": ["0x001020", "0x001024", "0x001028", "0x00102C"],
         "dtype": "14'sd",
-        "default": [900, 900, 900, 900],
+        "default": [0, 0, 0, 0],
         "units": "raw"
         },
         {

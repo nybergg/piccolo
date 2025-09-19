@@ -31,11 +31,11 @@ print("Successfully imported all modules.")
 ################ Global Variables ################
 
 # Initiate Instrument/Sim and Lock
-simulate = True
+simulate = False
 launch_rp = True
 lock = threading.Lock() # For instrument data
 instrument = None
-camera_available = True
+camera_available = False
 SERVER_URL = "http://127.0.0.1:8050/"
 
 if simulate:
@@ -138,7 +138,7 @@ external_stylesheets = [dbc.themes.CYBORG]
 
 # Dash App Initialization
 app = dash.Dash(__name__,
-                title="Piccolo UI (Dash)",
+                title="Piccolo UI",
                 external_stylesheets=external_stylesheets,
                 update_title=None)
 
@@ -191,19 +191,19 @@ app.layout = dbc.Container([
     dcc.Store(id='sorter-state-store', data=True), # Sorter is ON by default
     dcc.Interval(id='counter-interval-component', interval=1000, n_intervals=0),
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
-    html.H3("Piccolo", style={'textAlign': 'center', 'marginBottom': '20px'}), # Centered main title
-
+    dbc.Row(html.Hr()),
     dbc.Row([
         # Controls Column (Left)
         dbc.Col([
-            html.H5("Controls"),
+            html.H5("Instrument Controls"),
             html.Hr(),
+            # Detection and Sorting
             html.H6("Detection and Sorting Controls"),
             dbc.Row([
                 dbc.Col(width=1), # Spacer column
                 dbc.Col([
-                    dbc.Row(dbc.Button("Detection ON", id="reset-counters-button", color="success", size="sm", className="w-100 mb-3")),
-                    dbc.Row(dbc.Button("Sorting ON", id="sorter-button", color="success", size="sm", className="w-100 mb-3")),
+                    dbc.Row(dbc.Button("Detection: OFF", id="detection-button", color="secondary", size="sm", className="w-100 mb-3")),
+                    dbc.Row(dbc.Button("Sorting: OFF", id="sorter-button", color="secondary", size="sm", className="w-100 mb-3")),
                 ], width=4, align="center"),
                 dbc.Col(width=1), # Spacer column
                 dbc.Col([
@@ -222,15 +222,21 @@ app.layout = dbc.Container([
                 ], align="start", width = 5),
             ]),
             html.Hr(),
-            html.H6("Instrument Controls"),
+            # Lasers
+            html.H6("Laser Controls"),
             html.Label("488nm Laser Power:"),
             dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("520nm Laser Power:"),
             dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("Detection Threshold Channel:"),
-            dcc.Dropdown(id='threshold-channel-dropdown',
+            html.Hr(),
+            # Detection Threshold
+            html.H6("Droplet Detection Settings"),
+            dbc.Col([
+                html.Label("Detection Threshold Channel:"),
+                dcc.Dropdown(id='threshold-channel-dropdown',
                          options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
                          value=0, clearable=False, className="mb-2"),
+            ]),
             html.Label("Detection Threshold (V):"),
             dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Datapoint Count:"),
@@ -264,9 +270,9 @@ app.layout = dbc.Container([
         ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
         
 
-        # Plots Column (Middle)
+        # Instrument Data Column (Middle)
         dbc.Col([
-            html.H6("Droplet Data"),
+            html.H5("Instrument Data"),
             dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
             html.Hr(className="my-2"),
             html.H6("SiPM Signals"),
@@ -276,7 +282,7 @@ app.layout = dbc.Container([
 
         # Camera Column (Right)
         dbc.Col([
-            html.H6("Basler Camera Live View"),
+            html.H5("Camera Controls"),
             html.Img(
                 src="/video_feed" if camera_available else "",
                 id='camera-feed-img',
@@ -451,24 +457,64 @@ def update_buffer(value):
     return "mb-2"
 
 @app.callback(
-    [Output('sorter-button', 'children'),
-     Output('sorter-button', 'color'),
-     Output('sorter-state-store', 'data')],
-    [Input('sorter-button', 'n_clicks')],
-    [State('sorter-state-store', 'data')],
+    [Output('detection-button', 'children'),
+     Output('detection-button', 'color'),
+     Output('detection-button', 'data'),
+     Output('sorter-button', 'disabled')],  # Add this output
+    [Input('detection-button', 'n_clicks')],
+    [State('detection-button', 'data')],
     prevent_initial_call=True
 )
-def toggle_sorter(n_clicks, is_on):
+def toggle_detection(n_clicks, is_on):
     if n_clicks is None:
         raise exceptions.PreventUpdate
     new_state = not is_on
     with lock:
         if instrument:
-            instrument.enable_sorter(new_state)
+            instrument.enable_detection(new_state)
+    
+    # Determine the disabled state for the sorter button
+    sorter_disabled = not new_state # Sorter is disabled if detection is OFF
+    
     if new_state:
-        return "Sorter: ON", "success", new_state
+        # Detection is ON, enable the sorter button
+        return "Detection: ON", "success", new_state, sorter_disabled
     else:
-        return "Sorter: OFF", "secondary", new_state
+        # Detection is OFF, disable the sorter button
+        return "Detection: OFF", "secondary", new_state, sorter_disabled
+
+@app.callback(
+    [Output('sorter-button', 'children'),
+     Output('sorter-button', 'color'),
+     Output('sorter-state-store', 'data')],
+    [Input('sorter-button', 'n_clicks'),
+     Input('detection-button', 'n_clicks')], # Listen to the detection button
+    [State('sorter-state-store', 'data'),
+     State('detection-button', 'data')],     # Get detection button state
+    prevent_initial_call=True
+)
+def toggle_sorter(n_clicks, n_detection_clicks, sorter_is_on, detection_is_on):
+    ctx = dash.callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    # Handle the case when the Sorter button is clicked
+    if triggered_id == 'sorter-button':
+        # Don't toggle if detection is currently off
+        if not detection_is_on:
+            raise exceptions.PreventUpdate
+        
+        # Toggle the sorter state
+        new_state = not sorter_is_on
+        with lock:
+            if instrument:
+                instrument.enable_sorter(new_state)
+        
+        if new_state:
+            return "Sorting: ON", "success", new_state
+        else:
+            return "Sorting: OFF", "secondary", new_state
+
+    raise exceptions.PreventUpdate
 
 @app.callback(
     Output('gate-selection-store', 'data'),
@@ -538,26 +584,6 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
         except Exception as e: msg = f"Error saving data: {e}"
     print(msg)
     return msg
-
-@app.callback(
-    [Output('reset-status-div', 'children'),
-     Output('reset-status-div', 'color'),
-     Output('reset-status-div', 'data')],
-    [Input('reset-status-div', 'n_clicks')],
-    [State('reset-status-div', 'data')],
-    prevent_initial_call=True
-)
-def reset_counters(n_clicks, is_on):
-    if n_clicks is None:
-        raise exceptions.PreventUpdate
-    new_state = not is_on
-    with lock:
-        if instrument:
-            instrument.enable_detector(new_state)
-    if new_state:
-        return "Detection: ON", "success", new_state
-    else:
-        return "Detection: OFF", "secondary", new_state
 
 @app.callback(
     [Output('droplet-count-div', 'children'),
