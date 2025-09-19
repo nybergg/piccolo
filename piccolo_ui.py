@@ -31,7 +31,7 @@ print("Successfully imported all modules.")
 ################ Global Variables ################
 
 # Initiate Instrument/Sim and Lock
-simulate = False
+simulate = True
 launch_rp = True
 lock = threading.Lock() # For instrument data
 instrument = None
