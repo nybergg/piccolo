@@ -10,6 +10,7 @@ fpga/project/vivado.log
 tests
 redpitaya/rp_login_desk.json
 redpitaya/rp_login_lab.json
+redpitaya/rp_login_4CH.json
 concurrency_tools.py
 logs
 __pycache__

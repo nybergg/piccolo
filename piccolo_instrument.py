@@ -53,6 +53,31 @@ class Instrument:
         # Setup droplet data buffer
         self.buffer_size = 1000  # or set from UI
         self.droplet_data = pd.DataFrame()
+        self.adc1_data = []
+        self.adc2_data = []
+        self.adc3_data = []
+        self.adc4_data = []
+
+        # FPGA register cache
+        self.fpga_registers = {
+            "fads_reset": 0,
+            "sort_delay": 100,
+            "sort_duration": 50,
+            "sort_enable": 1,
+            "enabled_channels": 15,
+            "droplet_sensing_addr": 0,
+        }
+        for i in range(4):
+            self.fpga_registers[f"min_intensity_thresh[{i}]"] = -175
+            self.fpga_registers[f"low_intensity_thresh[{i}]"] = -150
+            self.fpga_registers[f"high_intensity_thresh[{i}]"] = 900
+            self.fpga_registers[f"min_width_thresh[{i}]"] = 1250
+            self.fpga_registers[f"low_width_thresh[{i}]"] = 12500
+            self.fpga_registers[f"high_width_thresh[{i}]"] = 0xccddeeff
+            self.fpga_registers[f"min_area_thresh[{i}]"] = 1
+            self.fpga_registers[f"low_area_thresh[{i}]"] = 255
+            self.fpga_registers[f"high_area_thresh[{i}]"] = 0xccddeeff
+
 
 
 
@@ -62,7 +87,7 @@ class Instrument:
         """ Get the local information for the Red Pitaya and run the script on it"""
         
         # Load the Red Pitaya login information from a JSON file
-        with open("redpitaya/rp_login_lab.json", "r") as f:
+        with open("redpitaya/rp_login_4CH.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
@@ -83,8 +108,10 @@ class Instrument:
     def get_rp_calibration(self):
         """Hardcode the Red Pitaya calibration values for CH1 and CH2"""
         calibration_values = {}
-        calibration_values["CH1"] = [-100, 1.012201]
-        calibration_values["CH2"] = [-10, 0.999356]
+        calibration_values["CH1"] = [-10, 1.0]
+        calibration_values["CH2"] = [-10, 1.0]
+        calibration_values["CH3"] = [-10, 1.0] # Placeholder, adjust as needed
+        calibration_values["CH4"] = [-10, 1.0] # Placeholder, adjust as needed
 
         self.calibration_values = calibration_values
 
@@ -129,8 +156,8 @@ class Instrument:
             # Construct command for background piccolo_rp.py process with logging
             args = " ".join(self.script_args)
             cmd = (
-                f'cd {self.rp_dir} && '
-                f'nohup sudo python3 {self.local_script} {args} '
+                f'cd {self.rp_dir} && ' 
+                f'nohup sudo python3 {self.local_script} {args} ' 
                 f'> piccolo_stdout.log 2> piccolo_stderr.log < /dev/null &'
             )
 
@@ -158,7 +185,7 @@ class Instrument:
                 print(f"[Paramiko stdout read error] {e}")
 
             # Ensure command completed
-            _ = stdout.channel.recv_exit_status()
+            _ = stdout.channel.recv_exit_status() 
             
             # Capture any final stdout and stderr output
             self.stdout = stdout.read().decode().strip()
@@ -206,7 +233,80 @@ class Instrument:
         """Set FPGA memory variable."""
         self.memory_command_client.send_set_command(variable, value)
         print(f"[Instrument] Queued memory variable set: {variable} = {value}")
+        # Update internal cache
+        if variable in self.fpga_registers:
+            self.fpga_registers[variable] = value
 
+    def get_fpga_registers(self):
+        """Return the cached dictionary of FPGA register values."""
+        return self.fpga_registers
+
+    def get_fpga_registers_converted(self):
+        """
+        Return a dictionary of FPGA registers with human-readable values and units.
+        Returns a dictionary where each value is a tuple: (converted_value, unit_string).
+        """
+        display_registers = {}
+        raw_registers = self.get_fpga_registers()
+
+        for name, value in raw_registers.items():
+            # Default: no conversion
+            display_value = value
+            unit = ""
+
+            # Try to extract channel number
+            ch_match = re.search(r'\[(\d)\]', name)
+            ch = int(ch_match.group(1)) if ch_match else None
+
+            try:
+                # Ensure value is a number for conversions
+                numeric_value = int(value)
+
+                if ch is not None:
+                    if 'intensity_thresh' in name:
+                        display_value = self.convert_raw_to_volts(numeric_value, ch)
+                        unit = "V"
+                    elif 'area_thresh' in name:
+                        # Based on cur_droplet_area conversion
+                        display_value = self.convert_raw_to_volts(numeric_value, ch) / 1000.0
+                        unit = "V·ms"
+                    elif 'width_thresh' in name:
+                        # Based on cur_droplet_width conversion, raw is in us
+                        display_value = numeric_value / 1000.0
+                        unit = "ms"
+                elif 'sort_delay' in name or 'sort_duration' in name:
+                    # Assuming these are in microseconds
+                    display_value = numeric_value / 1000.0
+                    unit = "ms"
+                elif name == 'droplet_frequency':
+                    if numeric_value != 0:
+                        display_value = int(1e6 / numeric_value)  # Convert from us period to Hz frequency
+                        unit = "Hz"
+                    else:
+                        display_value = 0  # Avoid division by zero                    else:
+                        unit = "Hz"
+            except (ValueError, TypeError):
+                # Value is not a number (e.g., binary string from get_var), keep as is
+                display_value = value
+                unit = ""
+
+            display_registers[name] = (display_value, unit)
+
+        return display_registers
+
+    def enable_sorter(self, enable: bool):
+        """Enable or disable the droplet sorter on the FPGA."""
+        value_to_set = 1 if enable else 0
+        self.set_memory_variable("sort_enable", value_to_set)
+        status = "enabled" if enable else "disabled"
+        print(f"[Instrument] Sorter has been {status}.")
+
+    def enable_detection(self, enable: bool):
+        """Enable or disable the droplet detection on the FPGA."""
+        value_to_set = 1 if enable else 0  
+        self.set_memory_variable("detection_enable", value_to_set)
+        status = "enabled" if enable else "disabled"
+        print(f"[Instrument] Droplet detection has been {status}.")
 
     def stop_servers(self):
         """Send kill command to Red Pitaya."""
@@ -218,20 +318,27 @@ class Instrument:
     
     ################ Red Pitaya ADC Data Handling Methods ################
 
-    def _get_adc_data(self, adc1_data, adc2_data):
+    def _get_adc_data(self, adc1_data, adc2_data, adc3_data, adc4_data):
         self.adc1_data = adc1_data
         self.adc2_data = adc2_data
+        self.adc3_data = adc3_data
+        self.adc4_data = adc4_data
 
-        return self.adc1_data, self.adc2_data
+        return self.adc1_data, self.adc2_data, self.adc3_data, self.adc4_data
 
     def _get_memory_data(self, fpgaoutput):
         if not fpgaoutput:
             return
+        
+        # Update the FPGA register cache with the latest values
+        self.fpga_registers.update(fpgaoutput)
+        if self.very_verbose:
+            print(f"[Instrument] Received memory data: {fpgaoutput}")
 
         try:
             row = fpgaoutput
 
-            for ch in (0, 1):
+            for ch in range(4):
 
                 # Intensity
                 raw_int = fpgaoutput[f"cur_droplet_intensity[{ch}]"]
@@ -268,9 +375,12 @@ class Instrument:
     def save_adc_log(self, filename="adc_log.csv"):
         # Assuming adc1_data and adc2 _data have 4096 points
         time_data = np.linspace(0, 50, 4096)
-        df = pd.DataFrame({'time': time_data,
-                            'adc1': self.adc1_data,
-                            'adc2': self.adc2_data})
+        adc_data = {'time': time_data,
+                    'adc1': self.adc1_data,
+                    'adc2': self.adc2_data,
+                    'adc3': self.adc3_data,
+                    'adc4': self.adc4_data}
+        df = pd.DataFrame({k: v for k, v in adc_data.items() if v is not None and len(v) == len(time_data)})
         df.to_csv(filename, index=False)
     
     
@@ -336,7 +446,7 @@ class Instrument:
         thresh_raw = self.convert_volts_to_raw(thresh, ch)    
 
         # Write sort_gates to FPGA memory
-        self.set_memory_variable(thresh_key, int(thresh))
+        self.set_memory_variable(thresh_key, int(thresh_raw))
         
         return thresh
     
@@ -372,7 +482,7 @@ if __name__ == "__main__":
     )
 
     try:
-        print("\n-----------Running Piccolo Instrument-----------")
+        print("\n-----------Running Piccolo Instrument----------- ")
         ############ LAUNCHING PICCOLO METHODS ON RED PITAYA ############
         launch_thread = threading.Thread(target=instrument.launch_piccolo_rp, daemon=True)
 
@@ -394,7 +504,7 @@ if __name__ == "__main__":
              
         
         ############ TESTING ADC STREAM CLIENT ############
-        print("\n-----------Running Piccolo Tests-----------")
+        print("\n-----------Running Piccolo Tests----------- ")
         print("\n[Test] ADC Stream Client testing.")
 
         for _ in range(3):  # ~1 second if 0.1s stream interval
@@ -408,46 +518,6 @@ if __name__ == "__main__":
                 print(f"[Test] Ch1 Max: {np.max(ch1):.4f}, Ch2 Max: {np.max(ch2):.4f}")
             else:
                 print("[Test] No data yet.")
-
-
-        # ############ TESTING MEM STREAM CLIENT ############
-        # print("\n[Test] Memory Stream Client testing.")
-
-        # # Read the droplet data buffer
-        # print(f"[Test] Droplet data buffer length: {len(instrument.droplet_data)}")
-        # print(instrument.droplet_data.head(30))
-        # instrument.save_droplet_data_log("droplet_log_0603.csv")
-
-        
-        # ############ TESTING MEMORY COMMAND CLIENT ############
-        # print("\n[Test] Memory Command Client testing.")
-
-        # var_name = "low_intensity_thresh[0]"
-        # var_value = 1234
-        
-        # try:
-        #     # Read initial value
-        #     fpgaoutput = instrument.memory_stream_client.fpgaoutput
-        #     print(f"[Test] Initial Memory Value for {var_name}: {fpgaoutput[var_name]}")
-            
-        #     # Send a test variable update
-        #     instrument.set_memory_variable(var_name, var_value)
-        #     print("[Test] Set {var_value} to {var_value}")
-        #     time.sleep(0.5)  # Give time for the command to be sent
-
-        #     # Read updated value
-        #     fpgaoutput = instrument.memory_stream_client.fpgaoutput
-        #     print(f"[Test] Updated Memory Value for {var_name}: {fpgaoutput[var_name]}")
-
-        # finally:
-        #     print("[Test] Memory Command Client stopped.")
-        #     instrument.stop_clients()
-
-        # time.sleep(1)  # Give time for the clients to stop
-
-
-        # ############ TESTING THRESHOLD SETTING ############
-        # instrument.set_detection_threshold(thresh=0.1, thresh_key='min_intensity_thresh[0]')
 
 
             

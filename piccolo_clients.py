@@ -67,14 +67,16 @@ class ADCStreamClient(BaseClient):
         super().__init__(port, is_streaming_client=True)
         self.adc1_data = None
         self.adc2_data = None
+        self.adc3_data = None
+        self.adc4_data = None
         self.data_callback = data_callback
         self.lock = threading.Lock()
 
     def _run(self):
-        n_channels = 2
+        n_channels = 4
         buffer_size = 4096 
         mem_size = 4
-        packet_size = n_channels * buffer_size * mem_size # 2 channels, 16384 floats, each 4 bytes
+        packet_size = n_channels * buffer_size * mem_size # 4 channels
 
         try:
             while not self.stop_flag.is_set():
@@ -84,19 +86,25 @@ class ADCStreamClient(BaseClient):
             
                 float_data = struct.unpack(f'{n_channels*buffer_size}f', raw_data)
                 with self.lock:
-                    adc1_data = np.array(float_data[:buffer_size]) 
-                    adc2_data = np.array(float_data[buffer_size:])
+                    adc1_data = np.array(float_data[0*buffer_size:1*buffer_size])
+                    adc2_data = np.array(float_data[1*buffer_size:2*buffer_size])
+                    adc3_data = np.array(float_data[2*buffer_size:3*buffer_size])
+                    adc4_data = np.array(float_data[3*buffer_size:4*buffer_size])
                     self.adc1_data = adc1_data
                     self.adc2_data = adc2_data
+                    self.adc3_data = adc3_data
+                    self.adc4_data = adc4_data
                 if self.data_callback:
-                    self.data_callback(adc1_data, adc2_data)
+                    self.data_callback(adc1_data, adc2_data, adc3_data, adc4_data)
 
         except Exception as e:
             print(f"[ADCStreamClient] Error during _run: {e}")
         finally:
             self.close()
 
-        return adc1_data, adc2_data
+        # Initialize to empty lists to avoid reference before assignment on error
+        adc1_data, adc2_data, adc3_data, adc4_data = [], [], [], []
+        return adc1_data, adc2_data, adc3_data, adc4_data
 
 class MemoryStreamClient(BaseClient):
     """Stream droplet/memory data."""

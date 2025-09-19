@@ -10,7 +10,7 @@ from scipy.stats import gaussian_kde
 
 class InstrumentSim:
     def __init__(self,
-                 num_channels=2,
+                 num_channels=4,
                  signal_length=4096,
                  sampling_interval_ms=0.02,
                  drop_interval_ms=1,
@@ -36,7 +36,7 @@ class InstrumentSim:
         self.time_ms = np.arange(0, signal_length) * sampling_interval_ms
         self.signal = [np.zeros_like(self.time_ms)] * num_channels
         self.drop_arrival_time_ms = np.arange(0, signal_length) * drop_interval_ms
-        self.set_threshold(0.03)
+        self.set_detection_threshold(0.03)
         self.set_gate_limits(sort_keys=["cur_droplet_intensity[0]", "cur_droplet_intensity[1]"], 
                              limits={"x0": 0, "y0": 0, "x1": 0, "y1": 0})
         self.sipm_gain = np.zeros(num_channels)
@@ -45,6 +45,12 @@ class InstrumentSim:
         self.droplet_data = pd.DataFrame()
         self.buffer_length = 1000
         self._running = False
+        self.sorter_on = True
+        self.fpga_registers = {
+            'droplet_counter': 0,
+            'sorted_droplet_counter': 0,
+            'droplet_frequency': 0,
+        }
         if self.verbose:
             print("%s: -> open and ready."%self.name)
 
@@ -74,7 +80,7 @@ class InstrumentSim:
             # Generate baseline noise:
             baseline_noise = np.random.normal(loc=self.signal_baseline,
                                               scale=self.signal_baseline_cv,
-                                              size=len(self.time_ms))            
+                                              size=len(self.time_ms))
             # Combine signals for this channel:
             self.signal[ch] = (signal + baseline_noise) * self.sipm_gain[ch]
         if self.very_verbose:
@@ -152,32 +158,36 @@ class InstrumentSim:
                         results["auc"].append(auc)
                         results["fwhm"].append(fwhm)
                         results["baseline"].append(baseline)
-                # Calculate density measurement for the density scatter plot:
-                auc_1 = [
-                    results["auc"][i]
-                    for i, channel_value in enumerate(results["channel"])
-                    if channel_value == 0
-                    ]
-                auc_2 = [
-                    results["auc"][i]
-                    for i, channel_value in enumerate(results["channel"])
-                    if channel_value == 1
-                    ]
-                # Locate auc values that are zero and give them a negligible
-                # non-zero value
-                auc_1 = [x if x > 0 else 0.001 for x in auc_1]
-                auc_2 = [x if x > 0 else 0.001 for x in auc_2]
-                if np.size(auc_1) > 2:
-                    cur_droplet_data = {"x": auc_1, "y": auc_2}
-                    self._on_memory_data(fpgaoutput=cur_droplet_data)
+                
+                # Create a DataFrame from the results
+                df = pd.DataFrame(results)
+
+                # Pivot the DataFrame to get one row per drop ID
+                pivot_df = df.pivot(index='id', columns='channel')
+
+                # Create new column names
+                new_cols = [f'cur_droplet_intensity[{col[1]}]', f'cur_droplet_intensity_v[{col[1]}]', 
+                            f'cur_droplet_width[{col[1]}]', f'cur_droplet_width_ms[{col[1]}]',
+                            f'cur_droplet_area[{col[1]}]', f'cur_droplet_area_vms[{col[1]}]']
+                
+                final_df = pd.DataFrame()
+                for ch in range(self.num_channels):
+                    final_df[f'cur_droplet_intensity[{ch}]'] = pivot_df['max signal'][ch]
+                    final_df[f'cur_droplet_intensity_v[{ch}]'] = pivot_df['max signal'][ch]
+                    final_df[f'cur_droplet_width[{ch}]'] = pivot_df['width'][ch]
+                    final_df[f'cur_droplet_width_ms[{ch}]'] = pivot_df['width'][ch]
+                    final_df[f'cur_droplet_area[{ch}]'] = pivot_df['auc'][ch]
+                    final_df[f'cur_droplet_area_vms[{ch}]'] = pivot_df['auc'][ch]
+
+                self._on_memory_data(final_df)
+
         if self.very_verbose:
             print("\n%s: -> done analysing drops"%self.name)
         return None
     
     def _on_memory_data(self, fpgaoutput):
-
         # Append to DataFrame
-        self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame(fpgaoutput)], ignore_index=True)
+        self.droplet_data = pd.concat([self.droplet_data, fpgaoutput], ignore_index=True)
 
         # Maintain rolling size
         if len(self.droplet_data) > self.buffer_length:
@@ -185,10 +195,10 @@ class InstrumentSim:
 
         return self.droplet_data
 
-    def set_threshold(self, threshold):
+    def set_detection_threshold(self, thresh, thresh_key=None):
         if self.verbose:
-            print("%s: setting threshold = %s"%(self.name, threshold))
-        self.threshold = threshold
+            print("%s: setting threshold = %s"%(self.name, thresh))
+        self.threshold = thresh
         return None
 
     def set_gate_limits(self, sort_keys, limits):
@@ -203,6 +213,41 @@ class InstrumentSim:
             print("%s(ch%s): setting sipm gain = %s"%(self.name, ch, gain))
         self.sipm_gain[ch] = gain
         return None
+
+    def enable_sorter(self, state):
+        if self.verbose:
+            print(f"%s: setting sorter to {state}"%self.name)
+        self.sorter_on = state
+        return None
+
+    def save_droplet_data_log(self, filename):
+        if self.verbose:
+            print(f"%s: saving droplet data to {filename}"%self.name)
+        self.droplet_data.to_csv(filename, index=False)
+        return None
+
+    def save_adc_log(self, filename):
+        if self.verbose:
+            print(f"%s: saving adc data to {filename}"%self.name)
+        df = pd.DataFrame(np.transpose(self.signal))
+        df.to_csv(filename, index=False)
+        return None
+
+    def set_memory_variable(self, name, value):
+        if self.verbose:
+            print(f"%s: setting memory variable {name} to {value}"%self.name)
+        if name in self.fpga_registers:
+            self.fpga_registers[name] = value
+        return None
+
+    def get_fpga_registers(self):
+        return self.fpga_registers
+
+    def get_fpga_registers_converted(self):
+        return self.fpga_registers
+
+    def convert_volts_to_raw(self, volts, ch):
+        return int(volts * 1000) # Dummy conversion
 
     def start_generating(self):
         if self.verbose:
@@ -220,10 +265,13 @@ class InstrumentSim:
             self._thread.join()
         return None
 
+    def stop(self):
+        self.stop_generating()
+
 if __name__ == "__main__":
     import time
     dg = InstrumentSim(verbose=True, very_verbose=True)
     dg.start_generating()
     time.sleep(0.5) # run for a bit
     input('\nhit enter to continue')
-    dg.stop_generating()
+    dg.stop()

@@ -1,16 +1,22 @@
 {
     "fpga_inputs": [
         {
-        "name": "fads_reset",
+        "name": "detection_enable",
         "addr": "0x000020",
+        "dtype": "1'b",
+        "default": "0"
+        },
+        {
+        "name": "sort_enable",
+        "addr": "0x00002C",
         "dtype": "1'b",
         "default": "0"
         },
         {
         "name": "enabled_channels",
         "addr": "0x000300",
-        "dtype": "2'b",
-        "default": "11"
+        "dtype": "4'b",
+        "default": "0011"
         },
         {
         "name": "droplet_sensing_addr",
@@ -33,73 +39,66 @@
         "units": "microseconds"
         },
         {
-        "name": "camera_delay",
-        "addr": "0x00002c",
-        "dtype": "32'd",
-        "default": 100,
-        "units": "microseconds"
-        },
-        {
         "name": "min_intensity_thresh",
-        "addr": ["0x001000", "0x001004"],
+        "addr": ["0x001000", "0x001004", "0x001008", "0x00100C"],
         "dtype": "14'sd",
-        "default": [650, 689],
+        "default": [30, 30, 30, 30],
         "units": "raw"
         },
         {
         "name": "low_intensity_thresh",
-        "addr": ["0x001020", "0x001024"],
+        "addr": ["0x001020", "0x001024", "0x001028", "0x00102C"],
         "dtype": "14'sd",
-        "default": [900, 900],
+        "default": [0, 0, 0, 0],
         "units": "raw"
         },
         {
         "name": "high_intensity_thresh",
-        "addr": ["0x001040", "0x001044"],
+        "addr": ["0x001040", "0x001044", "0x001048", "0x00104C"],
         "dtype": "14'sd",
-        "default": [6106, 6156],
+        "default": [6106, 6156, 6156, 6156],
         "units": "raw"
         },
         {
         "name": "min_width_thresh",
-        "addr": ["0x001060", "0x001064"],
+        "addr": ["0x001060", "0x001064", "0x001068", "0x00106C"],
         "dtype": "32'd",
-        "default": [6000, 6000],
+        "default": [6000, 6000, 6000, 6000],
         "units": "clock cycles"
         },
         {
         "name": "low_width_thresh",
-        "addr": ["0x001080", "0x001084"],
+        "addr": ["0x001080", "0x001084", "0x001088", "0x00108C"],
         "dtype": "32'd",
-        "default": [6000, 6000],
+        "default": [6000, 6000, 6000, 6000],
         "units": "clock cycles"
         },
         {
         "name": "high_width_thresh",
-        "addr": ["0x0010a0", "0x0010a4"],
+        "addr": ["0x0010a0", "0x0010a4", "0x0010a8", "0x0010aC"],
         "dtype": "32'd",
-        "default": [125000, 3437096703],
+        "default": [125000, 3437096703, 3437096703, 3437096703],
         "units": "clock cycles"
         },
         {
         "name": "min_area_thresh",
-        "addr": ["0x0010c0", "0x0010c4"],
+        "addr": ["0x0010c0", "0x0010c4", "0x0010c8", "0x0010cC"],
         "dtype": "32'd",
-        "default": [0, 0],
+        "default": [0, 0, 0, 0],
         "units": "cc x raw"
         },
         {
         "name": "low_area_thresh",
-        "addr": ["0x0010e0", "0x0010e4"],
+        "addr": ["0x0010e0", "0x0010e4", "0x0010e8", "0x0010eC"],
         "dtype": "32'd",
-        "default": [1000000, 1000000],
+        "default": [1000000, 1000000, 1000000, 1000000],
         "units": "cc x raw"
         },
         {
         "name": "high_area_thresh",
-        "addr": ["0x001100", "0x001104"],
+        "addr": ["0x001100", "0x001104", "0x001108", "0x00110C"],
         "dtype": "32'd",
-        "default": [3437096703, 3437096703],
+        "default": [3437096703, 3437096703, 3437096703, 3437096703],
         "units": "cc x raw"
         }
     ],
@@ -116,20 +115,35 @@
         "units": "microseconds"
         },
         {
+        "name": "droplet_counter",
+        "addr": "0x000254",
+        "dtype": "32'd"
+        },
+        {
+        "name": "sorted_droplet_counter",
+        "addr": "0x000258",
+        "dtype": "32'd"
+        },
+        {
+        "name": "droplet_frequency",
+        "addr": "0x00025C",
+        "dtype": "32'd"
+        },
+        {
         "name": "cur_droplet_intensity",
-        "addr": ["0x000204", "0x000208"],
+        "addr": ["0x000204", "0x000208", "0x00020C", "0x000210"],
         "dtype": "32'sd",
         "units": "raw"
         },
         {
         "name": "cur_droplet_width",
-        "addr": ["0x00021c", "0x000220"],
+        "addr": ["0x00021c", "0x000220", "0x000224", "0x000228"],
         "dtype": "32'd",
         "units": "clock cycles"
         },
         {
         "name": "cur_droplet_area",
-        "addr": ["0x000234", "0x000238"],
+        "addr": ["0x000234", "0x000238", "0x00023C", "0x000240"],
         "dtype": "32'sd",
         "units": "cc x raw"
         },
@@ -137,6 +151,12 @@
         "name": "droplet_classification",
         "addr": "0x00024c",
         "dtype": "16'b"
+        },
+        {
+        "name": "adc_value",
+        "addr": ["0x00030C", "0x000310", "0x000314", "0x000318"],
+        "dtype": "14'sd",
+        "units": "raw"
         }   
     ]
   }

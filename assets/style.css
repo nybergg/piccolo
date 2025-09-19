@@ -1,0 +1,23 @@
+/* assets/style.css */
+
+/* Change the background color and border of the checkbox when it is checked */
+.form-check-input:checked {
+    background-color: #28a745; /* Green color from the 'success' theme */
+    border-color: #28a745;
+}
+
+/* Change the focus outline color to match the new color */
+.form-check-input:focus {
+    border-color: #28a745;
+    box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.25); /* Same green with transparency */
+}
+
+.btn-success {
+  background-color: #28a745 !important;
+  border-color: #28a745 !important;
+}
+
+.btn-success:hover {
+  background-color: #28a745 !important;
+  border-color: #28a745 !important;
+}

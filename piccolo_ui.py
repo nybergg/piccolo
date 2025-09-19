@@ -7,6 +7,8 @@ import time
 import pandas as pd
 import signal
 import webbrowser
+import re
+import json
 from threading import Timer
 import logging
 
@@ -21,7 +23,6 @@ from pypylon import pylon
 import cv2
 
 # Piccolo imports
-import concurrency_tools as ct
 from piccolo_instrument_sim import InstrumentSim
 from piccolo_instrument import Instrument
 print("Successfully imported all modules.")
@@ -34,11 +35,11 @@ simulate = False
 launch_rp = True
 lock = threading.Lock() # For instrument data
 instrument = None
-camera_available = True
+camera_available = False
 SERVER_URL = "http://127.0.0.1:8050/"
 
 if simulate:
-    instrument = ct.ObjectInSubprocess(InstrumentSim)
+    instrument = InstrumentSim()
     instrument.start_generating()
 else:
     instrument = Instrument(rp_dir="piccolo_testing", verbose=True)
@@ -74,11 +75,11 @@ def camera_thread_func():
     try:
         camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
         camera.Open()
-        # Optional: Configure camera parameters (e.g., resolution, exposure, gain)
-        # camera.Width.SetValue(640)
-        # camera.Height.SetValue(480)
-        # camera.PixelFormat.SetValue("BGR8Packed") # Or Mono8, ensure it's a format OpenCV understands
-        # camera.ExposureTime.SetValue(10000) # Example: 10ms
+        # Configure camera parameters (e.g., resolution, exposure, gain)
+        camera.Width.SetValue(640)
+        camera.Height.SetValue(480)
+        camera.PixelFormat.SetValue("BGR8Packed") # Or Mono8, ensure it's a format OpenCV understands
+        camera.ExposureTime.SetValue(10000) # Example: 10ms
 
         camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
         converter = pylon.ImageFormatConverter()
@@ -91,12 +92,12 @@ def camera_thread_func():
                     image = converter.Convert(grabResult)
                     img_array = image.GetArray()
 
-                    # Optional: Resize for web display to reduce bandwidth
-                    # target_width = 640
-                    # aspect_ratio = img_array.shape[0] / img_array.shape[1]
-                    # target_height = int(target_width * aspect_ratio)
-                    # img_resized = cv2.resize(img_array, (target_width, target_height))
-                    # ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    # Resize for web display to reduce bandwidth
+                    target_width = 640
+                    aspect_ratio = img_array.shape[0] / img_array.shape[1]
+                    target_height = int(target_width * aspect_ratio)
+                    img_resized = cv2.resize(img_array, (target_width, target_height))
+                    ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
 
                     ret, jpeg = cv2.imencode('.jpg', img_array, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
                     if ret:
@@ -137,7 +138,7 @@ external_stylesheets = [dbc.themes.CYBORG]
 
 # Dash App Initialization
 app = dash.Dash(__name__,
-                title="Piccolo UI (Dash)",
+                title="Piccolo UI",
                 external_stylesheets=external_stylesheets,
                 update_title=None)
 
@@ -171,12 +172,12 @@ def video_feed():
 
 # Define Axis Options
 axis_options_list = [
-    "cur_droplet_intensity[0]", "cur_droplet_intensity[1]",
-    "cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]",
-    "cur_droplet_width[0]", "cur_droplet_width[1]",
-    "cur_droplet_width_ms[0]", "cur_droplet_width_ms[1]",
-    "cur_droplet_area[0]", "cur_droplet_area[1]",
-    "cur_droplet_area_vms[0]", "cur_droplet_area_vms[1]",
+    "cur_droplet_intensity[0]", "cur_droplet_intensity[1]", "cur_droplet_intensity[2]", "cur_droplet_intensity[3]",
+    "cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]", "cur_droplet_intensity_v[2]", "cur_droplet_intensity_v[3]",
+    "cur_droplet_width[0]", "cur_droplet_width[1]", "cur_droplet_width[2]", "cur_droplet_width[3]",
+    "cur_droplet_width_ms[0]", "cur_droplet_width_ms[1]", "cur_droplet_width_ms[2]", "cur_droplet_width_ms[3]",
+    "cur_droplet_area[0]", "cur_droplet_area[1]", "cur_droplet_area[2]", "cur_droplet_area[3]",
+    "cur_droplet_area_vms[0]", "cur_droplet_area_vms[1]", "cur_droplet_area_vms[2]", "cur_droplet_area_vms[3]",
 ]
 axis_options_dict = [{'label': i, 'value': i} for i in axis_options_list]
 initial_x_key = "cur_droplet_intensity_v[0]"
@@ -187,19 +188,73 @@ app.layout = dbc.Container([
     dcc.Store(id='timer-store', data=[]),
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
     dcc.Store(id='axis-keys-store', data={'x': initial_x_key, 'y': initial_y_key}),
+    dcc.Store(id='sorter-state-store', data=False), # Sorter is OFF by default
+    dcc.Interval(id='counter-interval-component', interval=1000, n_intervals=0),
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
-    html.H3("Piccolo", style={'textAlign': 'center', 'marginBottom': '20px'}), # Centered main title
-
+    dbc.Row(html.Hr()),
     dbc.Row([
         # Controls Column (Left)
         dbc.Col([
-            html.H5("Controls"),
+            html.H5("Instrument Controls"),
             html.Hr(),
+            # Detection and Sorting
+            html.H6("Detection and Sorting Controls"),
+            dbc.Row([
+                dbc.Col(width=1), # Spacer column
+                dbc.Col([
+                    dbc.Row(dbc.Button("Detection: OFF", id="detection-button", color="secondary", size="sm", className="w-100 mb-3")),
+                    dbc.Row(dbc.Button("Sorting: OFF", id="sorter-button", color="secondary", size="sm", className="w-100 mb-3")),
+                ], width=4, align="center"),
+                dbc.Col(width=1), # Spacer column
+                dbc.Col([
+                    dbc.Row([
+                        dbc.Col(html.Div("Total:", style={'fontWeight': 'bold'})),
+                        dbc.Col(html.Div("...", id='droplet-count-div')),
+                    ], align="center"),
+                    dbc.Row([
+                        dbc.Col(html.Div("Sorted:", style={'fontWeight': 'bold'})),
+                        dbc.Col(html.Div("...", id='sorted-droplet-count-div')),
+                    ], align="center"),
+                    dbc.Row([
+                        dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'})),
+                        dbc.Col(html.Div("... Hz", id='droplet-frequency-div')),
+                    ], align="center"),
+                ], align="start", width = 5),
+            ]),
+            html.Hr(),
+            # Lasers
+            html.H6("Laser Controls"),
             html.Label("488nm Laser Power:"),
             dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("520nm Laser Power:"),
             dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("SiPM 0 Threshold:"),
+            html.Hr(),
+            # Detection Threshold
+            html.H6("Droplet Detection Settings"),
+            html.Label("Enabled Detection Channels:"),
+            dbc.Row([
+                dbc.Col(width=1), # Spacer column
+                dbc.Col(
+                    dbc.Checklist(
+                        id='enabled-channels-checklist',
+                        options=[
+                            {'label': '  Ch0', 'value': 0},
+                            {'label': '  Ch1', 'value': 1},
+                            {'label': '  Ch2', 'value': 2},
+                            {'label': '  Ch3', 'value': 3}
+                        ],
+                        value=[0, 1],  # Default value: all channels enabled
+                        inline=False,
+                        className="mb-2"
+                    ),
+                ),
+                dbc.Col(width=1)
+            ]),
+            html.Label("Detection Threshold Channel:"),
+            dcc.Dropdown(id='threshold-channel-dropdown',
+                        options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
+                        value=0, clearable=False, className="mb-2"),
+            html.Label("Detection Threshold (V):"),
             dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Datapoint Count:"),
             dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
@@ -224,11 +279,17 @@ app.layout = dbc.Container([
             dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
             dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
             html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
+            html.Hr(),
+            html.H5("FPGA Register Control", className="mt-3"),
+            html.P("Values are updated every 5 seconds. Enter a new value and press 'Set' to update a register on the FPGA."),
+            html.Div(id='fpga-set-status', className="mb-2"),
+            html.Div(id='fpga-register-div'),
         ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
+        
 
-        # Plots Column (Middle)
+        # Instrument Data Column (Middle)
         dbc.Col([
-            html.H6("Droplet Data"),
+            html.H5("Instrument Data"),
             dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
             html.Hr(className="my-2"),
             html.H6("SiPM Signals"),
@@ -238,7 +299,7 @@ app.layout = dbc.Container([
 
         # Camera Column (Right)
         dbc.Col([
-            html.H6("Basler Camera Live View"),
+            html.H5("Camera Controls"),
             html.Img(
                 src="/video_feed" if camera_available else "",
                 id='camera-feed-img',
@@ -300,17 +361,25 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
 
     with lock:
         if simulate:
-            adc1 = instrument.signal[0]; adc2 = instrument.signal[1]; df = instrument.droplet_data
+            # Assuming sim provides 4 channels now
+            adc1, adc2, adc3, adc4 = instrument.signal[0], instrument.signal[1], instrument.signal[2], instrument.signal[3]
+            df = instrument.droplet_data
         else:
-            adc1 = instrument.adc1_data; adc2 = instrument.adc2_data; df = instrument.droplet_data
+            adc1 = instrument.adc1_data
+            adc2 = instrument.adc2_data
+            adc3 = instrument.adc3_data
+            adc4 = instrument.adc4_data
+            df = instrument.droplet_data
 
     x_key = axis_keys['x']
     y_key = axis_keys['y']
     time_axis = np.linspace(0, 50, 4096)
 
     signal_fig = go.Figure()
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='SiPM0', line=dict(color='mediumseagreen')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='SiPM1', line=dict(color='royalblue')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='CH0', line=dict(color='mediumseagreen')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='CH1', line=dict(color='royalblue')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc3, mode='lines', name='CH2', line=dict(color='firebrick')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc4, mode='lines', name='CH3', line=dict(color='goldenrod')))
     signal_fig.add_hline(y=threshold_value, line_dash="dot", line_color="mediumseagreen", annotation_text="Threshold")
     signal_fig.update_layout(title="SiPM Data", xaxis_title="Time (ms)", yaxis_title="Voltage", yaxis_range=[0, 1.2], legend_title="Signals", uirevision='signal_layout')
     update_text = f"Update Rate: {1 / s_per_update:.01f} Hz ({s_per_update * 1000:.00f} ms)" if s_per_update > 0 else "Calculating..."
@@ -368,21 +437,65 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
 
 @app.callback(
         Output('laser0-slider', 'value'), 
-        [Input('laser0-slider', 'value'), 
-         Input('laser1-slider', 'value'), 
-         Input('threshold-slider', 'value')], 
+        [Input('laser0-slider', 'value'),
+         Input('laser1-slider', 'value')],
          prevent_initial_call=True
 )
-def update_sliders(g0, g1, thresh):
+def update_sliders(g0, g1):
     ctx = dash.callback_context; trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     with lock:
-            if simulate:
-                if trigger_id == 'laser0-slider': instrument.set_sipm_gain(0, g0)
-                elif trigger_id == 'laser1-slider': instrument.set_sipm_gain(1, g1)
-                elif trigger_id == 'threshold-slider': instrument.set_threshold(thresh)
-            else:
-                if trigger_id == 'threshold-slider': instrument.set_detection_threshold(thresh=thresh, thresh_key="min_intensity_thresh[0]")
+        if instrument:
+            if trigger_id == 'laser0-slider': instrument.set_sipm_gain(0, g0)
+            elif trigger_id == 'laser1-slider': instrument.set_sipm_gain(1, g1)
     return g0
+
+@app.callback(
+    Output('fpga-set-status', 'children', allow_duplicate=True), # Re-use the status message div
+    Input('enabled-channels-checklist', 'value'),
+    prevent_initial_call=True
+)
+def set_enabled_channels(selected_channels):
+    """
+    Converts the list of selected channels into a bitmask and sends it to the FPGA.
+    """
+    if selected_channels is None:
+        selected_channels = []
+
+    # Create the bitmask from the selected channels.
+    # e.g., if [0, 1] is selected, the bitmask is (1 << 0) | (1 << 1) = 1 | 2 = 3.
+    bitmask = 0
+    for ch_index in selected_channels:
+        bitmask |= (1 << ch_index)
+
+    # The FPGA expects a 32-bit integer, so the bitmask should be an integer.
+    final_value = int(bitmask)
+
+    with lock:
+        if instrument:
+            try:
+                instrument.set_memory_variable("enabled_channels", final_value)
+                msg = f"Success: Enabled channels updated to bitmask {final_value}."
+                print(msg)
+                return dbc.Alert(msg, color="success", dismissable=True, duration=4000)
+            except Exception as e:
+                msg = f"Error setting enabled channels: {e}"
+                print(msg)
+                return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
+    
+    raise exceptions.PreventUpdate
+
+@app.callback(
+    Output('threshold-slider', 'className'), 
+    [Input('threshold-slider', 'value')],
+    [State('threshold-channel-dropdown', 'value')],
+    prevent_initial_call=True
+)
+def update_detection_threshold(threshold_volts, channel):
+    with lock:
+        if instrument:
+            thresh_key = f"min_intensity_thresh[{channel}]"
+            instrument.set_detection_threshold(thresh=threshold_volts, thresh_key=thresh_key)
+    return "" # No actual class change needed
 
 @app.callback(
         Output('buffer-spinner', 'className'), 
@@ -396,6 +509,66 @@ def update_buffer(value):
     return "mb-2"
 
 @app.callback(
+    [Output('detection-button', 'children'),
+     Output('detection-button', 'color'),
+     Output('detection-button', 'data'),
+     Output('sorter-button', 'disabled')],  # Add this output
+    [Input('detection-button', 'n_clicks')],
+    [State('detection-button', 'data')],
+    prevent_initial_call=True
+)
+def toggle_detection(n_clicks, is_on):
+    if n_clicks is None:
+        raise exceptions.PreventUpdate
+    new_state = not is_on
+    with lock:
+        if instrument:
+            instrument.enable_detection(new_state)
+    
+    # Determine the disabled state for the sorter button
+    sorter_disabled = not new_state # Sorter is disabled if detection is OFF
+    
+    if new_state:
+        # Detection is ON, enable the sorter button
+        return "Detection: ON", "success", new_state, sorter_disabled
+    else:
+        # Detection is OFF, disable the sorter button
+        return "Detection: OFF", "secondary", new_state, sorter_disabled
+
+@app.callback(
+    [Output('sorter-button', 'children'),
+     Output('sorter-button', 'color'),
+     Output('sorter-state-store', 'data')],
+    [Input('sorter-button', 'n_clicks'),
+     Input('detection-button', 'n_clicks')], # Listen to the detection button
+    [State('sorter-state-store', 'data'),
+     State('detection-button', 'data')],     # Get detection button state
+    prevent_initial_call=True
+)
+def toggle_sorter(n_clicks, n_detection_clicks, sorter_is_on, detection_is_on):
+    ctx = dash.callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    # Handle the case when the Sorter button is clicked
+    if triggered_id == 'sorter-button':
+        # Don't toggle if detection is currently off
+        if not detection_is_on:
+            raise exceptions.PreventUpdate
+        
+        # Toggle the sorter state
+        new_state = not sorter_is_on
+        with lock:
+            if instrument:
+                instrument.enable_sorter(new_state)
+        
+        if new_state:
+            return "Sorting: ON", "success", new_state
+        else:
+            return "Sorting: OFF", "secondary", new_state
+
+    raise exceptions.PreventUpdate
+
+@app.callback(
     Output('gate-selection-store', 'data'),
     Input('scatter-plot', 'selectedData'),
     State('axis-keys-store', 'data'),
@@ -407,7 +580,7 @@ def store_box_select(selectedData, axis_keys):
         y_range = selectedData['range']['y']
         new_box = {"x0": [x_range[0]], "y0": [y_range[0]], "x1": [x_range[1]], "y1": [y_range[1]]}
         current_sort_keys = [axis_keys['x'], axis_keys['y']]
-        # print(f"New selection. Keys={current_sort_keys}. Box={new_box}") # Keep for debugging if needed
+        print(f"New selection. Keys={current_sort_keys}. Box={new_box}") # Keep for debugging if needed
         with lock:
             instrument.set_gate_limits(sort_keys=current_sort_keys, limits=new_box)
         return new_box
@@ -463,6 +636,153 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
         except Exception as e: msg = f"Error saving data: {e}"
     print(msg)
     return msg
+
+@app.callback(
+    [Output('droplet-count-div', 'children'),
+     Output('sorted-droplet-count-div', 'children'),
+     Output('droplet-frequency-div', 'children')],
+    Input('counter-interval-component', 'n_intervals')
+)
+def update_counters(n):
+    # Default values
+    count_str, sorted_str, freq_str = "...", "...", "... Hz"
+
+    # Note: This polls all registers every second, which may have a performance impact.
+    # A more optimized instrument class could fetch these specific registers 
+    # more efficiently in its background data acquisition thread.
+    with lock:
+        if instrument:
+            try:
+                # This reads ALL registers via the instrument object, which handles both simulation and real hardware.
+                # Assumes these registers exist on the FPGA and are part of the conversion map.
+                converted_registers = instrument.get_fpga_registers_converted()
+
+                droplet_count = converted_registers.get('droplet_counter', ("N/A", ""))[0]
+                sorted_droplet_count = converted_registers.get('sorted_droplet_counter', ("N/A", ""))[0]
+                droplet_freq = converted_registers.get('droplet_frequency', ("N/A", ""))[0]
+
+                count_str = f"{droplet_count:,}" if isinstance(droplet_count, int) else str(droplet_count)
+                sorted_str = f"{sorted_droplet_count:,}" if isinstance(sorted_droplet_count, int) else str(sorted_droplet_count)
+                freq_str = f"{droplet_freq:,} Hz" if isinstance(droplet_freq, (int, float)) else str(droplet_freq)
+            except Exception as e:
+                print(f"Could not update counters from FPGA: {e}")
+                count_str, sorted_str, freq_str = "Error", "Error", "Error"
+    
+    return count_str, sorted_str, freq_str
+
+@app.callback(
+    Output('fpga-register-div', 'children'),
+    Input('interval-component', 'n_intervals')
+)
+def update_fpga_register_display(n):
+    if n % 20 != 0: # Update every 5 seconds (20 * 250ms)
+        return dash.no_update
+
+    with lock:
+        if instrument:
+            raw_registers = instrument.get_fpga_registers()
+            converted_registers = instrument.get_fpga_registers_converted()
+        else:
+            raw_registers = {}
+            converted_registers = {}
+
+    if not raw_registers:
+        return dbc.Alert("FPGA registers not available yet.", color="warning")
+
+    header = dbc.Row([
+        dbc.Col(html.B("Register Name"), width=3),
+        dbc.Col(html.B("Converted Value"), width=3),
+        dbc.Col(html.B("Raw Value"), width=2),
+        dbc.Col(html.B("New Value"), width=2),
+        dbc.Col(width=2), # for button
+    ], className="mb-2")
+
+    rows = [header, html.Hr()]
+    for name, raw_value in sorted(raw_registers.items()):
+        converted_value, unit = converted_registers.get(name, (raw_value, ""))
+
+        if isinstance(converted_value, float):
+            display_text = f"{converted_value:.3f} {unit}"
+            placeholder_text = f"{converted_value:.3f}"
+        else:
+            display_text = f"{converted_value} {unit}"
+            placeholder_text = f"{converted_value}"
+
+        # For inputs that are not numbers (e.g. binary strings), use text input
+        is_numeric = isinstance(converted_value, (int, float))
+        input_type = 'number' if is_numeric else 'text'
+
+        row = dbc.Row([
+            dbc.Col(html.Label(name), width=3, style={'word-wrap': 'break-word'}),
+            dbc.Col(html.Div(display_text), width=3),
+            dbc.Col(html.Div(f"{raw_value}"), width=2),
+            dbc.Col(dbc.Input(id={'type': 'fpga-input', 'index': name}, type=input_type, placeholder=placeholder_text, step="any")),
+            dbc.Col(dbc.Button("Set", id={'type': 'fpga-set-button', 'index': name}, size="sm", className="w-100"), width=2),
+        ], className="mb-2", align="center")
+        rows.append(row)
+
+    return html.Div(rows)
+
+@app.callback(
+    Output('fpga-set-status', 'children'),
+    Input({'type': 'fpga-set-button', 'index': dash.ALL}, 'n_clicks'),
+    [State({'type': 'fpga-input', 'index': dash.ALL}, 'value'),
+     State({'type': 'fpga-input', 'index': dash.ALL}, 'id')],
+    prevent_initial_call=True
+)
+def set_fpga_register(n_clicks, values, ids):
+    ctx = dash.callback_context
+    triggered = ctx.triggered[0]
+    if not triggered or not triggered['value']:
+        raise exceptions.PreventUpdate
+
+    triggered_id = json.loads(triggered['prop_id'].split('.')[0])
+    register_name = triggered_id['index']
+
+    value_to_set_str = next((val for i, val in enumerate(values) if ids[i]['index'] == register_name), None)
+
+    if value_to_set_str is not None:
+        try:
+            # User inputs the converted value, which should be a number
+            value_to_set = float(value_to_set_str)
+
+            # This will be converted back to a raw integer for the FPGA
+            final_value = value_to_set
+
+            # Reverse conversion logic
+            ch_match = re.search(r'\[(\d)\]', register_name)
+            ch = int(ch_match.group(1)) if ch_match else None
+
+            with lock:
+                if instrument:
+                    if ch is not None:
+                        if 'intensity_thresh' in register_name:
+                            final_value = instrument.convert_volts_to_raw(value_to_set, ch)
+                        elif 'area_thresh' in register_name:
+                            # User enters V·ms, convert to V, then to raw
+                            volts = value_to_set * 1000.0
+                            final_value = instrument.convert_volts_to_raw(volts, ch)
+                        elif 'width_thresh' in register_name:
+                            # User enters ms, convert to us for raw value
+                            final_value = value_to_set * 1000.0
+                    elif 'sort_delay' in register_name or 'sort_duration' in register_name:
+                        # User enters ms, convert to us for raw value
+                        final_value = value_to_set * 1000.0
+
+                    # For non-converted values, final_value remains value_to_set
+                    final_value_int = int(final_value)
+                    instrument.set_memory_variable(register_name, final_value_int)
+                    msg = f"Success: Set {register_name} to {value_to_set_str} (raw: {final_value_int})"
+                    print(msg)
+                    return dbc.Alert(msg, color="success", dismissable=True, duration=4000)
+
+        except (ValueError, TypeError) as e:
+            msg = f"Error: Invalid value for {register_name}: '{value_to_set_str}'. Must be a number. ({e})"
+            print(msg)
+            return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
+
+    return dash.no_update
+
 
 
 ################ Cleanup and Signal Handling ################
