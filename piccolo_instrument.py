@@ -278,6 +278,13 @@ class Instrument:
                     # Assuming these are in microseconds
                     display_value = numeric_value / 1000.0
                     unit = "ms"
+                elif name == 'droplet_frequency':
+                    if numeric_value != 0:
+                        display_value = int(1e6 / numeric_value)  # Convert from us period to Hz frequency
+                        unit = "Hz"
+                    else:
+                        display_value = 0  # Avoid division by zero                    else:
+                        unit = "Hz"
             except (ValueError, TypeError):
                 # Value is not a number (e.g., binary string from get_var), keep as is
                 display_value = value

@@ -20,7 +20,7 @@ import plotly.io as pio
 import dash_bootstrap_components as dbc
 from flask import Response # For MJPEG streaming
 from pypylon import pylon
-# import cv2
+import cv2
 
 # Piccolo imports
 from piccolo_instrument_sim import InstrumentSim
@@ -59,10 +59,10 @@ cam_thread = None
 # Create an initial placeholder image for the camera feed
 if camera_available:
     placeholder_img = np.zeros((240, 320, 3), dtype=np.uint8) # Small placeholder
-    # cv2.putText(placeholder_img, "Waiting for Camera...", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 1)
-    # ret_init, jpeg_init = cv2.imencode('.jpg', placeholder_img)
-    # if ret_init:
-    #     latest_frame_jpeg = jpeg_init.tobytes()
+    cv2.putText(placeholder_img, "Waiting for Camera...", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 1)
+    ret_init, jpeg_init = cv2.imencode('.jpg', placeholder_img)
+    if ret_init:
+        latest_frame_jpeg = jpeg_init.tobytes()
 
 # Camera Thread Function
 def camera_thread_func():
@@ -75,11 +75,11 @@ def camera_thread_func():
     try:
         camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
         camera.Open()
-        # Optional: Configure camera parameters (e.g., resolution, exposure, gain)
-        # camera.Width.SetValue(640)
-        # camera.Height.SetValue(480)
-        # camera.PixelFormat.SetValue("BGR8Packed") # Or Mono8, ensure it's a format OpenCV understands
-        # camera.ExposureTime.SetValue(10000) # Example: 10ms
+        # Configure camera parameters (e.g., resolution, exposure, gain)
+        camera.Width.SetValue(640)
+        camera.Height.SetValue(480)
+        camera.PixelFormat.SetValue("BGR8Packed") # Or Mono8, ensure it's a format OpenCV understands
+        camera.ExposureTime.SetValue(10000) # Example: 10ms
 
         camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
         converter = pylon.ImageFormatConverter()
@@ -92,17 +92,17 @@ def camera_thread_func():
                     image = converter.Convert(grabResult)
                     img_array = image.GetArray()
 
-                    # Optional: Resize for web display to reduce bandwidth
-                    # target_width = 640
-                    # aspect_ratio = img_array.shape[0] / img_array.shape[1]
-                    # target_height = int(target_width * aspect_ratio)
-                    # img_resized = cv2.resize(img_array, (target_width, target_height))
-                    # ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    # Resize for web display to reduce bandwidth
+                    target_width = 640
+                    aspect_ratio = img_array.shape[0] / img_array.shape[1]
+                    target_height = int(target_width * aspect_ratio)
+                    img_resized = cv2.resize(img_array, (target_width, target_height))
+                    ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
 
-                    # ret, jpeg = cv2.imencode('.jpg', img_array, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
-                    # if ret:
-                    #     with frame_lock:
-                    #         latest_frame_jpeg = jpeg.tobytes()
+                    ret, jpeg = cv2.imencode('.jpg', img_array, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
+                    if ret:
+                        with frame_lock:
+                            latest_frame_jpeg = jpeg.tobytes()
                 grabResult.Release()
             except pylon.GenericException as e:
                 print(f"Pylon grab error: {e}")
@@ -119,11 +119,11 @@ def camera_thread_func():
         print(f"Pylon camera initialization error: {e}")
         # Fallback to error image
         error_img = np.zeros((240, 320, 3), dtype=np.uint8)
-        # cv2.putText(error_img, "Camera Error", (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        # ret, jpeg = cv2.imencode('.jpg', error_img)
-        # if ret:
-        #     with frame_lock:
-        #         latest_frame_jpeg = jpeg.tobytes()
+        cv2.putText(error_img, "Camera Error", (50, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        ret, jpeg = cv2.imencode('.jpg', error_img)
+        if ret:
+            with frame_lock:
+                latest_frame_jpeg = jpeg.tobytes()
     except Exception as e_outer:
         print(f"Outer camera thread error: {e_outer}")
     finally:
@@ -155,11 +155,11 @@ def generate_camera_frames():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes_to_send + b'\r\n')
         else: # If no frame, send the placeholder again or a very small blank JPEG
             placeholder_img_yield = np.zeros((50, 50, 3), dtype=np.uint8)
-            # cv2.putText(placeholder_img_yield, "NC", (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100),1)
-            # ret_yield, jpeg_yield = cv2.imencode('.jpg', placeholder_img_yield)
-            # if ret_yield:
-            #      yield (b'--frame\r\n'
-            #        b'Content-Type: image/jpeg\r\n\r\n' + jpeg_yield.tobytes() + b'\r\n')
+            cv2.putText(placeholder_img_yield, "NC", (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100),1)
+            ret_yield, jpeg_yield = cv2.imencode('.jpg', placeholder_img_yield)
+            if ret_yield:
+                 yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg_yield.tobytes() + b'\r\n')
 
 
 @app.server.route('/video_feed')
@@ -474,7 +474,9 @@ def store_box_select(selectedData, axis_keys):
         y_range = selectedData['range']['y']
         new_box = {"x0": [x_range[0]], "y0": [y_range[0]], "x1": [x_range[1]], "y1": [y_range[1]]}
         current_sort_keys = [axis_keys['x'], axis_keys['y']]
-        # print(f"New selection. Keys={current_sort_keys}. Box={new_box}") # Keep for debugging if needed
+        
+        print(f"New selection. Keys={current_sort_keys}. Box={new_box}") # Keep for debugging if needed
+        
         with lock:
             instrument.set_gate_limits(sort_keys=current_sort_keys, limits=new_box)
         return new_box
@@ -582,7 +584,7 @@ def update_counters(n):
 
                 count_str = f"{droplet_count:,}" if isinstance(droplet_count, int) else str(droplet_count)
                 sorted_str = f"{sorted_droplet_count:,}" if isinstance(sorted_droplet_count, int) else str(sorted_droplet_count)
-                freq_str = f"{droplet_freq:.1f} Hz" if isinstance(droplet_freq, (int, float)) else str(droplet_freq)
+                freq_str = f"{droplet_freq:,} Hz" if isinstance(droplet_freq, (int, float)) else str(droplet_freq)
             except Exception as e:
                 print(f"Could not update counters from FPGA: {e}")
                 count_str, sorted_str, freq_str = "Error", "Error", "Error"

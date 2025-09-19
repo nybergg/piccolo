@@ -1,6 +1,6 @@
 `timescale 10ns / 1ns //for simulation
 /*
-  RedPitaya FADS module for dual ADC inputs.
+  RedPitaya FADS module for four ADC inputs.
 */
 module red_pitaya_fads #(
     parameter RSZ = 14,
@@ -19,7 +19,7 @@ module red_pitaya_fads #(
     input signed [14-1:0]   dat_c_i,        // ADC Channel C (2)
     input signed [14-1:0]   dat_d_i,        // ADC Channel D (3)
     output reg              sort_trig,      // Trigger for sorting
-    output reg              camera_trig,
+    output reg              camera_trig,    // Trigger for camera
     output reg  [8-1:0]     debug,          // At the moment the current state of the state machine
     
     // System bus 
@@ -47,6 +47,12 @@ reg signed  [MEM -1:0] cur_droplet_intensity    [CHNL-1:0];   // intensity peak 
 reg         [MEM -1:0] cur_droplet_width        [CHNL-1:0];   // peak width - full width at half maximum (fwhm)
 reg signed  [MEM -1:0] cur_droplet_area         [CHNL-1:0];   // area under the curve (auc)
 
+// Counters and frequency measurement registers
+reg         [MEM-1:0]   droplet_counter         = 32'd0;      // counter for total number of droplets since last reset
+reg         [MEM-1:0]   sorted_droplet_counter  = 32'd0;      // counter for total number of sorted droplets since last reset
+reg         [MEM-1:0]   last_droplet_time_us    = 32'd0;      // timer for last droplet
+reg         [MEM-1:0]   droplet_period_us       = 32'd0;      // period timer
+
 // Eval
 wire            droplet_positive; // Indicates if the droplet is positive
 wire            droplet_negative; // Indicates if the droplet is negative
@@ -59,7 +65,11 @@ reg [MEM -1:0]  sort_end_us                 = 32'd0;    // End time for sorting 
 reg [MEM -1:0]  sort_delay_end_us           = 32'd0;    // End time for sorting delay in microseconds
 reg [MEM -1:0]  sort_duration               = 32'd50;   // Duration of sorting in microseconds
 reg [MEM -1:0]  sort_delay                  = 32'd100;  // Delay before sorting in microseconds
-reg             fads_reset                  = 1'b0;     // Reset signal for FADS
+
+// FADS Reset
+reg             fads_reset_reg              = 1'b0;
+wire            fads_reset_pulse;
+assign          fads_reset_pulse            = fads_reset_reg;
 
 // Multi Channel registers and wires
 reg  [CHNL-1:0] active_channels_o;
@@ -110,13 +120,6 @@ reg signed  [DWT-1:0]                signal_max [CHNL-1:0]; // Signal max intens
 // Registers to store average-filtered ADC values for each channel
 reg signed [DWT-1:0]                 adc_values [CHNL-1:0]; // 
 
-// Counter registers
-reg [MEM-1:0] droplet_counter = 32'd0;
-reg [MEM-1:0] sorted_droplet_counter = 32'd0;
-reg [MEM-1:0] frequency_counter = 32'd0;
-reg [MEM-1:0] frequency_timer_us = 32'd0;
-reg [MEM-1:0] droplet_frequency = 32'd0;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Assigning Variables
@@ -150,10 +153,12 @@ endgenerate
 assign droplet_positive = &positive_intensity && &positive_width && &positive_area;
 assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (|low_area || |high_area || |positive_area) && (~(&positive_intensity && &positive_width && &positive_area));
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // MOVING AVERAGE FILTERS
 ////////////////////////////////////////////////////////////////////////////////
+
+// This block implements two independent moving average filters, one for each ADC channel.
+// It uses a generate loop to create identical logic for each channel.
 
 wire signed [DWT-1:0] filtered_adc_values [CHNL-1:0]; // Wires to hold the output of each filter
 
@@ -204,6 +209,7 @@ generate
 endgenerate
 
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // ADC Sampling
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,13 +226,12 @@ always @(posedge clk_i) begin
   end
 end
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // General Timer
 ////////////////////////////////////////////////////////////////////////////////
 
 always @(posedge clk_i) begin
-    if (fads_reset) begin
+    if (fads_reset_pulse) begin
         general_timer_counter <= 8'd0;
         general_timer_us <= 32'd0;
     end else begin
@@ -234,27 +239,6 @@ always @(posedge clk_i) begin
         if (general_timer_counter >= 8'd125) begin
             general_timer_us <= general_timer_us + 32'd1;
             general_timer_counter <= 8'd0;
-        end
-    end
-end
-
-
-////////////////////////////////////////////////////////////////////////////////
-// Droplet Frequency Calculation
-////////////////////////////////////////////////////////////////////////////////
-always @(posedge clk_i) begin
-    if (fads_reset) begin
-        frequency_timer_us <= 32'd0;
-        frequency_counter <= 32'd0;
-        droplet_frequency <= 32'd0;
-    end else begin
-        if (general_timer_counter >= 8'd125) begin
-            frequency_timer_us <= frequency_timer_us + 32'd1;
-            if (frequency_timer_us == 32'd1000000) begin
-                droplet_frequency <= frequency_counter;
-                frequency_counter <= 32'd0;
-                frequency_timer_us <= 32'd0;
-            end
         end
     end
 end
@@ -275,17 +259,16 @@ always @(posedge clk_i) begin
         // Base state | 0
         3'd0: begin
             debug <= 8'b00000001;
-            if (fads_reset || !rstn_i) begin
+            if (fads_reset_pulse || !rstn_i) begin
                 state <= 3'd0;                
-                sort_trig <= 1'b1;
+                sort_trig <= 1'b0;
                 camera_trig <= 1'b0;
                 
-                droplet_id              <= 32'd0;
+                droplet_id <= 32'd0;
                 droplet_counter <= 32'd0;
                 sorted_droplet_counter <= 32'd0;
-                frequency_counter <= 32'd0;
-                frequency_timer_us <= 32'd0;
-                droplet_frequency <= 32'd0;
+                last_droplet_time_us <= 32'd0;
+                droplet_period_us <= 32'd0;
 
                 cur_droplet_intensity   <= '{default:0};
                 cur_droplet_width       <= '{default:0};
@@ -304,7 +287,7 @@ always @(posedge clk_i) begin
         //  Wait for Droplet | 1
         3'd1: begin
             debug <= 8'b00000010;
-            if (fads_reset || !rstn_i)
+            if (fads_reset_pulse || !rstn_i)
                 state <= 3'd0;
             else if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
                 signal_width <= '{default:0};
@@ -323,8 +306,7 @@ always @(posedge clk_i) begin
         // Acquiring Droplet | 2
         3'd2: begin
             debug <= 8'b00000100;
-            sort_trig <= 1'b1;
-            if (fads_reset || !rstn_i)
+            if (fads_reset_pulse || !rstn_i)
                 state <= 3'd0;  
             else begin
                 // Intensity updates for all channels
@@ -347,7 +329,7 @@ always @(posedge clk_i) begin
 
         // Evaluating Droplet | 3
         3'd3: begin
-            if (fads_reset || !rstn_i)
+            if (fads_reset_pulse || !rstn_i)
                 state <= 3'd0;  
             else begin
                 debug <= 8'b00001000;
@@ -356,10 +338,18 @@ always @(posedge clk_i) begin
                     (signal_max[droplet_sensing_addr]  >= min_intensity_threshold[droplet_sensing_addr]) &&
                     (signal_area[droplet_sensing_addr] >= min_area_threshold[droplet_sensing_addr]) &&
                     (droplet_positive || droplet_negative)) begin
+                    
+                    // Update counters
                     droplet_id <= droplet_id + 32'd1;
                     droplet_counter <= droplet_counter + 32'd1;
-                    frequency_counter <= frequency_counter + 32'd1;
-                    
+
+                    // Calculate droplet frequency
+                    if (droplet_counter > 0) begin
+                        droplet_period_us <= general_timer_us - last_droplet_time_us;
+                    end
+                    last_droplet_time_us <= general_timer_us;
+
+                    // Calculate droplet parameters
                     for (i = 0; i < CHNL; i = i + 1) begin
                         cur_droplet_width[i]     <= signal_width[i];
                         cur_droplet_intensity[i] <= signal_max[i];
@@ -402,7 +392,7 @@ always @(posedge clk_i) begin
         
         // Sorting Delay | 4
         3'd4 : begin
-            if (fads_reset || !rstn_i)
+            if (fads_reset_pulse || !rstn_i)
                 state <= 3'd0;  
             else if (general_timer_us >= sort_delay_end_us) begin
                 debug <= 8'b00010000;
@@ -413,15 +403,17 @@ always @(posedge clk_i) begin
 
         // Sorting | 5
         3'd5 : begin
-            if (fads_reset || !rstn_i)
+            if (fads_reset_pulse || !rstn_i)
                 state <= 3'd0;  
             else begin 
                 debug <= 8'b00100000;
                 if (general_timer_us < sort_end_us) begin
                     debug <= 8'b11100000;
                     camera_trig <= 1'b1;
+                    sort_trig <= 1'b1;
                 end else begin
                     camera_trig <= 1'b0;
+                    sort_trig <= 1'b0;
                     debug <= 8'b10000000;
                     state <= 3'd1;
                 end
@@ -429,6 +421,19 @@ always @(posedge clk_i) begin
         end
     endcase
 end
+
+
+// Checks the fads_reset register and triggers the reset pulse if needed for 1 clock cycle
+always @(posedge clk_i) begin
+    // Clear the reset signal on the next clock cycle
+    fads_reset_reg <= 1'b0;
+
+    // Set the reset signal high for one clock cycle on a system bus write
+    if (sys_wen && (sys_addr[19:0] == 20'h00020) && sys_wdata[0]) begin
+        fads_reset_reg <= 1'b1;
+    end
+end
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // System Bus Interface - Read and Write
@@ -460,7 +465,6 @@ always @(posedge clk_i)
 
     end else if (sys_wen) begin
         // Writing to system bus
-        if (sys_addr[19:0]==20'h00020)                    fads_reset    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00024)                    sort_delay    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00028)                 sort_duration    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h0002C)                   sort_enable    <= sys_wdata[0:0];
@@ -519,13 +523,7 @@ always @(posedge clk_i)
     if (rstn_i == 1'b0) begin
         sys_err <= 1'b0;
         sys_ack <= 1'b0;
-        fads_reset <= 1'b0; 
-    end else if (sys_wen) begin
-        if (sys_addr[19:0] == 20'h00020) begin
-            fads_reset <= sys_wdata[0]; // Set the fads_reset flag
-        end
     end else begin
-        fads_reset <= 1'b0; 
         sys_err <= 1'b0;
         casez (sys_addr[19:0])
         //   Address  |       handling bus signals        | creating 32 bit wide word containing the data
@@ -574,11 +572,9 @@ always @(posedge clk_i)
             20'h01108: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[2]}  ; end
             20'h0110C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[3]}  ; end
 
-            20'h00020: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               fads_reset}     ; end // used for trouble shooting and in the interface to reset sorter and values including droplet id
             20'h00024: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               sort_delay}     ; end
             20'h00028: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},            sort_duration}     ; end
             20'h0002C: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},              sort_enable}     ; end
-
             20'h00200: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},               droplet_id}     ; end // unique droplet identifier of the last fully analysed droplet
             
             20'h00204: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[0]} ; end // output of the droplet sorter for each channel
@@ -599,9 +595,9 @@ always @(posedge clk_i)
             20'h0024C: begin sys_ack <= sys_en;  sys_rdata <= {{32-  16{1'b0}},   droplet_classification}     ; end // results of the state machine droplet classification
             20'h00250: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},              cur_time_us}     ; end // real time value fast changing
 
-            20'h00254: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          droplet_counter}     ; end // number of fully analysed droplets
-            20'h00258: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},   sorted_droplet_counter}     ; end // number of sorted droplets
-            20'h0025C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        droplet_frequency}     ; end // time averaged frequency of droplets across ~1 sec
+            20'h00254: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},          droplet_counter}     ; end
+            20'h00258: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},   sorted_droplet_counter}     ; end
+            20'h0025C: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},        droplet_period_us}     ; end
 
             20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},         enabled_channels}     ; end // boolean, starting with channel one as the digit (0/1) on the right
             20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},     droplet_sensing_addr}     ; end // number 0-3, indicates the master channel for droplet detection
