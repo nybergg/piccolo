@@ -301,6 +301,12 @@ class Instrument:
         status = "enabled" if enable else "disabled"
         print(f"[Instrument] Sorter has been {status}.")
 
+    def enable_detection(self, enable: bool):
+        """Enable or disable the droplet detection on the FPGA."""
+        value_to_set = 1 if enable else 0  
+        self.set_memory_variable("detection_enable", value_to_set)
+        status = "enabled" if enable else "disabled"
+        print(f"[Instrument] Droplet detection has been {status}.")
 
     def stop_servers(self):
         """Send kill command to Red Pitaya."""

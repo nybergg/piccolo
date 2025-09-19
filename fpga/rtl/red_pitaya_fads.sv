@@ -59,17 +59,12 @@ wire            droplet_negative; // Indicates if the droplet is negative
 reg [16 -1:0]   droplet_classification; // Classification of the droplet
 
 // Maintenance
-reg             droplet_acquisition_enable  = 1'b1;     // Enable droplet acquisition
-reg             sort_enable                 = 1'b1;     // Enable sorting
+reg             detection_enable            = 1'b0;     // Enable droplet detection
+reg             sort_enable                 = 1'b0;     // Enable sorting
 reg [MEM -1:0]  sort_end_us                 = 32'd0;    // End time for sorting in microseconds
 reg [MEM -1:0]  sort_delay_end_us           = 32'd0;    // End time for sorting delay in microseconds
 reg [MEM -1:0]  sort_duration               = 32'd50;   // Duration of sorting in microseconds
 reg [MEM -1:0]  sort_delay                  = 32'd100;  // Delay before sorting in microseconds
-
-// FADS Reset
-reg             fads_reset_reg              = 1'b0;
-wire            fads_reset_pulse;
-assign          fads_reset_pulse            = fads_reset_reg;
 
 // Multi Channel registers and wires
 reg  [CHNL-1:0] active_channels_o;
@@ -231,7 +226,7 @@ end
 ////////////////////////////////////////////////////////////////////////////////
 
 always @(posedge clk_i) begin
-    if (fads_reset_pulse) begin
+    if (!detection_enable) begin
         general_timer_counter <= 8'd0;
         general_timer_us <= 32'd0;
     end else begin
@@ -259,7 +254,7 @@ always @(posedge clk_i) begin
         // Base state | 0
         3'd0: begin
             debug <= 8'b00000001;
-            if (fads_reset_pulse || !rstn_i) begin
+            if (!detection_enable || !rstn_i) begin
                 state <= 3'd0;                
                 sort_trig <= 1'b0;
                 camera_trig <= 1'b0;
@@ -279,7 +274,7 @@ always @(posedge clk_i) begin
                 signal_area  <= '{default:0};
                 signal_max   <= '{default:-14'sd8192};
                 
-            end else if (droplet_acquisition_enable) begin
+            end else begin
                 state <= 3'd1;
             end
         end
@@ -287,7 +282,7 @@ always @(posedge clk_i) begin
         //  Wait for Droplet | 1
         3'd1: begin
             debug <= 8'b00000010;
-            if (fads_reset_pulse || !rstn_i)
+            if (!detection_enable || !rstn_i)
                 state <= 3'd0;
             else if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
                 signal_width <= '{default:0};
@@ -306,7 +301,7 @@ always @(posedge clk_i) begin
         // Acquiring Droplet | 2
         3'd2: begin
             debug <= 8'b00000100;
-            if (fads_reset_pulse || !rstn_i)
+            if (!detection_enable || !rstn_i)
                 state <= 3'd0;  
             else begin
                 // Intensity updates for all channels
@@ -329,7 +324,7 @@ always @(posedge clk_i) begin
 
         // Evaluating Droplet | 3
         3'd3: begin
-            if (fads_reset_pulse || !rstn_i)
+            if (!detection_enable || !rstn_i)
                 state <= 3'd0;  
             else begin
                 debug <= 8'b00001000;
@@ -392,7 +387,7 @@ always @(posedge clk_i) begin
         
         // Sorting Delay | 4
         3'd4 : begin
-            if (fads_reset_pulse || !rstn_i)
+            if (!detection_enable || !rstn_i)
                 state <= 3'd0;  
             else if (general_timer_us >= sort_delay_end_us) begin
                 debug <= 8'b00010000;
@@ -403,7 +398,7 @@ always @(posedge clk_i) begin
 
         // Sorting | 5
         3'd5 : begin
-            if (fads_reset_pulse || !rstn_i)
+            if (!detection_enable || !rstn_i)
                 state <= 3'd0;  
             else begin 
                 debug <= 8'b00100000;
@@ -423,18 +418,6 @@ always @(posedge clk_i) begin
 end
 
 
-// Checks the fads_reset register and triggers the reset pulse if needed for 1 clock cycle
-always @(posedge clk_i) begin
-    // Clear the reset signal on the next clock cycle
-    fads_reset_reg <= 1'b0;
-
-    // Set the reset signal high for one clock cycle on a system bus write
-    if (sys_wen && (sys_addr[19:0] == 20'h00020) && sys_wdata[0]) begin
-        fads_reset_reg <= 1'b1;
-    end
-end
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // System Bus Interface - Read and Write
 ////////////////////////////////////////////////////////////////////////////////
@@ -447,6 +430,10 @@ assign sys_en = sys_wen | sys_ren;
 always @(posedge clk_i)
     // Necessary handling of reset signal
     if (rstn_i == 1'b0) begin
+        // Reset detection and sort enable flags
+        detection_enable  <= 1'b0;
+        sort_enable       <= 1'b0;
+        
         // Resetting to default values
         min_intensity_threshold  <= '{default:-14'sd175}; // Should roughly correspond to -0.5V
         low_intensity_threshold  <= '{default:-14'sd150}; // On the specific RedPitaya I'm testing on
@@ -465,6 +452,7 @@ always @(posedge clk_i)
 
     end else if (sys_wen) begin
         // Writing to system bus
+        if (sys_addr[19:0]==20'h00020)              detection_enable    <= sys_wdata[0:0];
         if (sys_addr[19:0]==20'h00024)                    sort_delay    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00028)                 sort_duration    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h0002C)                   sort_enable    <= sys_wdata[0:0];
@@ -572,6 +560,7 @@ always @(posedge clk_i)
             20'h01108: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[2]}  ; end
             20'h0110C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[3]}  ; end
 
+            20'h00020: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},         detection_enable}     ; end
             20'h00024: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               sort_delay}     ; end
             20'h00028: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},            sort_duration}     ; end
             20'h0002C: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},              sort_enable}     ; end

@@ -1,10 +1,16 @@
 {
     "fpga_inputs": [
         {
-        "name": "fads_reset",
+        "name": "detection_enable",
         "addr": "0x000020",
         "dtype": "1'b",
         "default": "0"
+        },
+        {
+        "name": "sort_enable",
+        "addr": "0x00002C",
+        "dtype": "1'b",
+        "default": "1"
         },
         {
         "name": "enabled_channels",
@@ -31,12 +37,6 @@
         "dtype": "32'd",
         "default": 100,
         "units": "microseconds"
-        },
-        {
-        "name": "sort_enable",
-        "addr": "0x00002C",
-        "dtype": "1'b",
-        "default": "1"
         },
         {
         "name": "min_intensity_thresh",

@@ -198,24 +198,31 @@ app.layout = dbc.Container([
         dbc.Col([
             html.H5("Controls"),
             html.Hr(),
-            html.H6("Droplet Counters"),
+            html.H6("Detection and Sorting Controls"),
             dbc.Row([
-                dbc.Col(html.Div("Total:", style={'fontWeight': 'bold'}), width=5),
-                dbc.Col(html.Div("...", id='droplet-count-div'), width=7),
-            ], className="mb-1", align="center"),
-            dbc.Row([
-                dbc.Col(html.Div("Sorted:", style={'fontWeight': 'bold'}), width=5),
-                dbc.Col(html.Div("...", id='sorted-droplet-count-div'), width=7),
-            ], className="mb-1", align="center"),
-            dbc.Row([
-                dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'}), width=5),
-                dbc.Col(html.Div("... Hz", id='droplet-frequency-div'), width=7),
-            ], className="mb-1", align="center"),
-            dbc.Button("Reset Counters", id="reset-counters-button", color="warning", size="sm", className="w-100 mt-2 mb-3"),
-            html.Div(id='reset-status-div', className="mb-2"),
+                dbc.Col(width=1), # Spacer column
+                dbc.Col([
+                    dbc.Row(dbc.Button("Detection ON", id="reset-counters-button", color="success", size="sm", className="w-100 mb-3")),
+                    dbc.Row(dbc.Button("Sorting ON", id="sorter-button", color="success", size="sm", className="w-100 mb-3")),
+                ], width=4, align="center"),
+                dbc.Col(width=1), # Spacer column
+                dbc.Col([
+                    dbc.Row([
+                        dbc.Col(html.Div("Total:", style={'fontWeight': 'bold'})),
+                        dbc.Col(html.Div("...", id='droplet-count-div')),
+                    ], align="center"),
+                    dbc.Row([
+                        dbc.Col(html.Div("Sorted:", style={'fontWeight': 'bold'})),
+                        dbc.Col(html.Div("...", id='sorted-droplet-count-div')),
+                    ], align="center"),
+                    dbc.Row([
+                        dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'})),
+                        dbc.Col(html.Div("... Hz", id='droplet-frequency-div')),
+                    ], align="center"),
+                ], align="start", width = 5),
+            ]),
             html.Hr(),
-            dbc.Button("Sorter: ON", id="sorter-button", color="success", className="w-100 mb-3"),
-            html.Hr(),
+            html.H6("Instrument Controls"),
             html.Label("488nm Laser Power:"),
             dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("520nm Laser Power:"),
@@ -255,6 +262,7 @@ app.layout = dbc.Container([
             html.Div(id='fpga-set-status', className="mb-2"),
             html.Div(id='fpga-register-div'),
         ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
+        
 
         # Plots Column (Middle)
         dbc.Col([
@@ -474,9 +482,7 @@ def store_box_select(selectedData, axis_keys):
         y_range = selectedData['range']['y']
         new_box = {"x0": [x_range[0]], "y0": [y_range[0]], "x1": [x_range[1]], "y1": [y_range[1]]}
         current_sort_keys = [axis_keys['x'], axis_keys['y']]
-        
         print(f"New selection. Keys={current_sort_keys}. Box={new_box}") # Keep for debugging if needed
-        
         with lock:
             instrument.set_gate_limits(sort_keys=current_sort_keys, limits=new_box)
         return new_box
@@ -534,29 +540,24 @@ def save_data(n_scatter, n_signal, scatter_file, signal_file):
     return msg
 
 @app.callback(
-    Output('reset-status-div', 'children'),
-    Input('reset-counters-button', 'n_clicks'),
+    [Output('reset-status-div', 'children'),
+     Output('reset-status-div', 'color'),
+     Output('reset-status-div', 'data')],
+    [Input('reset-status-div', 'n_clicks')],
+    [State('reset-status-div', 'data')],
     prevent_initial_call=True
 )
-def reset_counters(n_clicks):
+def reset_counters(n_clicks, is_on):
     if n_clicks is None:
         raise exceptions.PreventUpdate
-    
-    msg = ""
+    new_state = not is_on
     with lock:
         if instrument:
-            try:
-                instrument.set_memory_variable('fads_reset', 1)
-                msg = dbc.Alert("Counter reset command sent.", color="info", dismissable=True, duration=3000)
-                print("Counter reset command sent to FPGA.")
-            except Exception as e:
-                error_msg = f"Error resetting counters: {e}"
-                msg = dbc.Alert(error_msg, color="danger", dismissable=True, duration=5000)
-                print(error_msg)
-        else:
-            msg = dbc.Alert("Instrument not available.", color="warning", dismissable=True, duration=3000)
-
-    return msg
+            instrument.enable_detector(new_state)
+    if new_state:
+        return "Detection: ON", "success", new_state
+    else:
+        return "Detection: OFF", "secondary", new_state
 
 @app.callback(
     [Output('droplet-count-div', 'children'),
