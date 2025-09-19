@@ -11,7 +11,7 @@ module red_pitaya_fads #(
     parameter MAVG_WINDOW_SIZE = 128, // Window size for the filter. MUST be a power of 2. 128 cc ~ 1us
     parameter MAVG_SHIFT_BITS = 7    // log2(MAVG_WINDOW_SIZE). This is the bit-shift amount for division.
 )(
-    // ADC inputs – now two independent channels
+    // ADC inputs 
     input                   clk_i,          // ADC Clock
     input                   rstn_i,         // ADC Reset - active low
     input signed [14-1:0]   dat_a_i,        // ADC Channel A (0)
@@ -68,11 +68,11 @@ reg [MEM -1:0]  sort_delay                  = 32'd100;  // Delay before sorting 
 
 // Multi Channel registers and wires
 reg  [CHNL-1:0] active_channels_o;
-wire [CHNL-1:0] droplet_sensing_channel;                // Channel for droplet sensing
-reg  [3-1:0]    droplet_sensing_addr;                   // Address for droplet sensing
-reg  [CHNL-1:0] enabled_channels;                       // Enabled channels, one bit per channel
-assign          droplet_sensing_channel     = (1 << droplet_sensing_addr); // one-hot encode the sensing channel
-assign          active_channels_o           = '1; // All channels are active outputs
+wire [CHNL-1:0] droplet_sensing_channel;                                    // Channel for droplet sensing
+reg  [3-1:0]    droplet_sensing_addr;                                       // Address for droplet sensing
+reg  [CHNL-1:0] enabled_channels            = 4'b1111;                      // Enabled channels, one bit per channel
+assign          droplet_sensing_channel     = (1 << droplet_sensing_addr);  // one-hot encode the sensing channel
+assign          active_channels_o           = '1;                           // All channels are active outputs
 
 // Intensity (result of droplet classification) for all channels
 wire [CHNL-1:0]      min_intensity;
@@ -144,15 +144,30 @@ generate
     end
 endgenerate
 
+// Mask logic with ENABLED CHANNELS
+wire [CHNL-1:0] positive_intensity_masked;
+wire [CHNL-1:0] positive_width_masked;
+wire [CHNL-1:0] positive_area_masked;
+
+genvar j;
+generate
+    for (j = 0; j < CHNL; j = j + 1) begin
+        // If a channel is disabled, its 'masked' signal becomes a logic '1', which won't affect the AND reduction.
+        assign positive_intensity_masked[j] = positive_intensity[j] | ~enabled_channels[j];
+        assign positive_width_masked[j]     = positive_width[j]     | ~enabled_channels[j];
+        assign positive_area_masked[j]      = positive_area[j]      | ~enabled_channels[j];
+    end
+endgenerate
+
 // Final droplet sorting decision logic
-assign droplet_positive = &positive_intensity && &positive_width && &positive_area;
-assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (|low_area || |high_area || |positive_area) && (~(&positive_intensity && &positive_width && &positive_area));
+assign droplet_positive = &positive_intensity_masked && &positive_width_masked && &positive_area_masked;
+assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (|low_area || |high_area || |positive_area) && (~(&positive_intensity_masked && &positive_width_masked && &positive_area_masked));
 
 ////////////////////////////////////////////////////////////////////////////////
 // MOVING AVERAGE FILTERS
 ////////////////////////////////////////////////////////////////////////////////
 
-// This block implements two independent moving average filters, one for each ADC channel.
+// This block implements four independent moving average filters, one for each ADC channel.
 // It uses a generate loop to create identical logic for each channel.
 
 wire signed [DWT-1:0] filtered_adc_values [CHNL-1:0]; // Wires to hold the output of each filter
@@ -179,17 +194,17 @@ generate
             if (!rstn_i) begin
                 // Reset the sum and clear the entire window on reset
                 mavg_sum <= 0;
-                for (integer j = 0; j < MAVG_WINDOW_SIZE; j = j + 1) begin
-                    mavg_window[j] <= 0;
+                for (integer k = 0; k < MAVG_WINDOW_SIZE; k = k + 1) begin
+                    mavg_window[k] <= 0;
                 end
-            end else begin
+            end else if (enabled_channels[ch]) begin // Only update if channel is enabled
                 // Efficient "running sum" calculation:
                 // new_sum = old_sum - oldest_sample + newest_sample
                 mavg_sum <= mavg_sum - mavg_window[MAVG_WINDOW_SIZE-1] + current_dat_i;
 
                 // Shift the window registers to make room for the new sample
-                for (integer j = MAVG_WINDOW_SIZE-1; j > 0; j = j - 1) begin
-                    mavg_window[j] <= mavg_window[j-1];
+                for (integer k = MAVG_WINDOW_SIZE-1; k > 0; k = k - 1) begin
+                    mavg_window[k] <= mavg_window[k-1];
                 end
                 // Add the new sample to the front of the window
                 mavg_window[0] <= current_dat_i;
@@ -257,9 +272,9 @@ always @(posedge clk_i) begin
             if (!detection_enable || !rstn_i) begin
                 state <= 3'd0;                
                 sort_trig <= 1'b0;
-                camera_trig <= 1'b0;
-                
-                droplet_id <= 32'd0;
+                camera_trig <= 1'b0;                
+                
+                droplet_id <= 32'd0;
                 droplet_counter <= 32'd0;
                 sorted_droplet_counter <= 32'd0;
                 last_droplet_time_us <= 32'd0;
@@ -284,7 +299,7 @@ always @(posedge clk_i) begin
             debug <= 8'b00000010;
             if (!detection_enable || !rstn_i)
                 state <= 3'd0;
-            else if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
+            else if (enabled_channels[droplet_sensing_addr] && adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
                 signal_width <= '{default:0};
                 signal_area  <= '{default:0};
                 signal_max   <= '{default:-14'sd8192};
@@ -304,17 +319,20 @@ always @(posedge clk_i) begin
             if (!detection_enable || !rstn_i)
                 state <= 3'd0;  
             else begin
-                // Intensity updates for all channels
+                // Intensity updates for all enabled channels
                 for (i = 0; i < CHNL; i = i + 1) begin
-                    if (adc_values[i] > signal_max[i])
+                    if (enabled_channels[i] && adc_values[i] > signal_max[i]) begin // Check if channel is enabled
                         signal_max[i] <= adc_values[i];
+                    end
                 end
 
                 // Based on the droplet-sensing channel signal: increment width and accumulate area for all channels.
                 if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
                     for (i = 0; i < CHNL; i = i + 1) begin
-                        signal_width[i] <= signal_width[i] + 32'd1;
-                        signal_area[i]  <= signal_area[i] + adc_values[i];
+                        if (enabled_channels[i]) begin // Check if channel is enabled
+                            signal_width[i] <= signal_width[i] + 32'd1;
+                            signal_area[i]  <= signal_area[i] + adc_values[i];
+                        end
                     end
                 end else begin
                     state <= 3'd3;
@@ -344,11 +362,13 @@ always @(posedge clk_i) begin
                     end
                     last_droplet_time_us <= general_timer_us;
 
-                    // Calculate droplet parameters
+                    // Calculate droplet parameters for enabled channels
                     for (i = 0; i < CHNL; i = i + 1) begin
-                        cur_droplet_width[i]     <= signal_width[i];
-                        cur_droplet_intensity[i] <= signal_max[i];
-                        cur_droplet_area[i]      <= signal_area[i];
+                        if (enabled_channels[i]) begin // Check if channel is enabled
+                            cur_droplet_width[i]     <= signal_width[i];
+                            cur_droplet_intensity[i] <= signal_max[i];
+                            cur_droplet_area[i]      <= signal_area[i];
+                        end
                     end
                     cur_time_us <= general_timer_us;
             
@@ -447,7 +467,7 @@ always @(posedge clk_i)
         low_area_threshold  <= '{default:32'h000000ff};
         high_area_threshold  <= '{default:32'hccddeeff};
                
-        enabled_channels <= '1;
+        enabled_channels <= 4'b1111;
         droplet_sensing_addr <= 3'h0;
 
     end else if (sys_wen) begin

@@ -188,7 +188,7 @@ app.layout = dbc.Container([
     dcc.Store(id='timer-store', data=[]),
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
     dcc.Store(id='axis-keys-store', data={'x': initial_x_key, 'y': initial_y_key}),
-    dcc.Store(id='sorter-state-store', data=True), # Sorter is ON by default
+    dcc.Store(id='sorter-state-store', data=False), # Sorter is OFF by default
     dcc.Interval(id='counter-interval-component', interval=1000, n_intervals=0),
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
     dbc.Row(html.Hr()),
@@ -231,12 +231,29 @@ app.layout = dbc.Container([
             html.Hr(),
             # Detection Threshold
             html.H6("Droplet Detection Settings"),
-            dbc.Col([
-                html.Label("Detection Threshold Channel:"),
-                dcc.Dropdown(id='threshold-channel-dropdown',
-                         options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
-                         value=0, clearable=False, className="mb-2"),
+            html.Label("Enabled Detection Channels:"),
+            dbc.Row([
+                dbc.Col(width=1), # Spacer column
+                dbc.Col(
+                    dbc.Checklist(
+                        id='enabled-channels-checklist',
+                        options=[
+                            {'label': '  Ch0', 'value': 0},
+                            {'label': '  Ch1', 'value': 1},
+                            {'label': '  Ch2', 'value': 2},
+                            {'label': '  Ch3', 'value': 3}
+                        ],
+                        value=[0, 1],  # Default value: all channels enabled
+                        inline=False,
+                        className="mb-2"
+                    ),
+                ),
+                dbc.Col(width=1)
             ]),
+            html.Label("Detection Threshold Channel:"),
+            dcc.Dropdown(id='threshold-channel-dropdown',
+                        options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
+                        value=0, clearable=False, className="mb-2"),
             html.Label("Detection Threshold (V):"),
             dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Datapoint Count:"),
@@ -433,7 +450,42 @@ def update_sliders(g0, g1):
     return g0
 
 @app.callback(
-    Output('threshold-slider', 'className'), # Dummy output, no change needed
+    Output('fpga-set-status', 'children', allow_duplicate=True), # Re-use the status message div
+    Input('enabled-channels-checklist', 'value'),
+    prevent_initial_call=True
+)
+def set_enabled_channels(selected_channels):
+    """
+    Converts the list of selected channels into a bitmask and sends it to the FPGA.
+    """
+    if selected_channels is None:
+        selected_channels = []
+
+    # Create the bitmask from the selected channels.
+    # e.g., if [0, 1] is selected, the bitmask is (1 << 0) | (1 << 1) = 1 | 2 = 3.
+    bitmask = 0
+    for ch_index in selected_channels:
+        bitmask |= (1 << ch_index)
+
+    # The FPGA expects a 32-bit integer, so the bitmask should be an integer.
+    final_value = int(bitmask)
+
+    with lock:
+        if instrument:
+            try:
+                instrument.set_memory_variable("enabled_channels", final_value)
+                msg = f"Success: Enabled channels updated to bitmask {final_value}."
+                print(msg)
+                return dbc.Alert(msg, color="success", dismissable=True, duration=4000)
+            except Exception as e:
+                msg = f"Error setting enabled channels: {e}"
+                print(msg)
+                return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
+    
+    raise exceptions.PreventUpdate
+
+@app.callback(
+    Output('threshold-slider', 'className'), 
     [Input('threshold-slider', 'value')],
     [State('threshold-channel-dropdown', 'value')],
     prevent_initial_call=True
