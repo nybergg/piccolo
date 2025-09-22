@@ -265,10 +265,14 @@ app.layout = dbc.Container([
             html.Label("Y-Axis Data:"),
             dcc.Dropdown(id='y-axis-dropdown', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
             dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-            dbc.Row([ dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', size="sm", step="any"), width=6), ], className="mb-2"),
-            dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-            dbc.Row([ dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', size="sm", step="any"), width=6), dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', size="sm", step="any"), width=6), ], className="mb-3"),
-            html.Hr(),
+            dbc.Row([
+                dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', value=0.1, size="sm", step="any"), width=6),
+                dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', value=3, size="sm", step="any"), width=6),
+            ], className="mb-2"),            dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+            dbc.Row([
+                dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', value=0.1, size="sm", step="any"), width=6),
+                dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', value=3, size="sm", step="any"), width=6),
+            ], className="mb-3"),            html.Hr(),
             html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
             html.Hr(),
             html.H6("Log Files"),
@@ -290,7 +294,16 @@ app.layout = dbc.Container([
         # Instrument Data Column (Middle)
         dbc.Col([
             html.H5("Instrument Data"),
-            dcc.Graph(id='scatter-plot', style={'height': '45vh'}), # Adjusted height
+            dcc.Graph(
+                id='scatter-plot',
+                style={'height': '45vh'},
+                figure={
+                    'layout': {
+                        'xaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)], 'autorange': False},
+                        'yaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)], 'autorange': False}
+                    }
+                }
+            ),
             html.Hr(className="my-2"),
             html.H6("SiPM Signals"),
             dcc.Graph(id='signal-plot', style={'height': '28vh'}), # Adjusted height
@@ -376,10 +389,10 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
     time_axis = np.linspace(0, 50, 4096)
 
     signal_fig = go.Figure()
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='CH0', line=dict(color='mediumseagreen')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='CH1', line=dict(color='royalblue')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc3, mode='lines', name='CH2', line=dict(color='firebrick')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc4, mode='lines', name='CH3', line=dict(color='goldenrod')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='CH0', line=dict(color='royalblue')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='CH1', line=dict(color='limegreen')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc3, mode='lines', name='CH2', line=dict(color='gold')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc4, mode='lines', name='CH3', line=dict(color='crimson')))
     signal_fig.add_hline(y=threshold_value, line_dash="dot", line_color="mediumseagreen", annotation_text="Threshold")
     signal_fig.update_layout(title="SiPM Data", xaxis_title="Time (ms)", yaxis_title="Voltage", yaxis_range=[0, 1.2], legend_title="Signals", uirevision='signal_layout')
     update_text = f"Update Rate: {1 / s_per_update:.01f} Hz ({s_per_update * 1000:.00f} ms)" if s_per_update > 0 else "Calculating..."
@@ -404,8 +417,8 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
                     showscale=True if len(density) > 0 else False, colorbar=dict(title="Density") if len(density) > 0 else None)
     ))
 
-    x_axis_config = {'title': x_key, 'type': x_scale}
-    y_axis_config = {'title': y_key, 'type': y_scale}
+    x_axis_config = {'title': x_key, 'type': x_scale, 'autorange': False}
+    y_axis_config = {'title': y_key, 'type': y_scale, 'autorange': False}
 
     if x_min_user is not None and x_max_user is not None:
         if x_max_user > x_min_user:
