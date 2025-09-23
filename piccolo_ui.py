@@ -53,8 +53,11 @@ else:
 # Initiate Camera Variables
 latest_frame_jpeg = None
 frame_lock = threading.Lock() # Separate lock for camera frame
+camera_lock = threading.Lock() # Lock for camera object access
 camera_running = False
 cam_thread = None
+camera = None # Global pypylon camera object
+camera_config = {'hw_trigger': False} # Global config for camera thread
 
 # Create an initial placeholder image for the camera feed
 if camera_available:
@@ -66,28 +69,52 @@ if camera_available:
 
 # Camera Thread Function
 def camera_thread_func():
-    global latest_frame_jpeg, camera_running
+    global latest_frame_jpeg, camera_running, camera, camera_lock, camera_config
     if not camera_available:
         print("Camera thread not starting: pypylon or OpenCV missing.")
         return
 
     print("Camera thread started.")
+    cam_instance = None
     try:
-        camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
-        camera.Open()
-        # Configure camera parameters (e.g., resolution, exposure, gain)
-        camera.Width.SetValue(2048)
-        camera.Height.SetValue(2048)
-        camera.PixelFormat.SetValue("Mono12p") 
-        camera.ExposureTime.SetValue(28) # Example: 10ms
+        cam_instance = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
+        cam_instance.Open()
 
-        camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+        # --- Disable Auto-Features ---
+        # It's good practice to disable auto functions before setting manual values.
+        cam_instance.ExposureAuto.SetValue("Off")
+        cam_instance.GainAuto.SetValue("Off")
+
+        # Configure non-UI camera parameters
+        cam_instance.Width.SetValue(2048)
+        cam_instance.Height.SetValue(2048)
+        cam_instance.PixelFormat.SetValue("Mono12p")
+
+        # --- Trigger Configuration ---
+        # The trigger mode is now set based on a global config dict.
+        # This allows the mode to be changed by restarting the thread.
+        hw_trigger_enabled = camera_config.get('hw_trigger', False)
+        mode = "On" if hw_trigger_enabled else "Off"
+        cam_instance.TriggerSelector.SetValue("FrameStart")
+        cam_instance.TriggerMode.SetValue(mode)
+        cam_instance.TriggerSource.SetValue("Line1") # Assumes trigger is on Line 1
+        print(f"Camera thread configured with TriggerMode: {mode}")
+
+        # Set initial values for UI-controlled parameters
+        cam_instance.ExposureTime.SetValue(28.0) # Default exposure time in microseconds
+        cam_instance.TriggerDelay.SetValue(0.0)   # Default trigger delay in microseconds
+
+        # Make camera object globally available for UI control
+        with camera_lock:
+            camera = cam_instance
+
+        cam_instance.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
         converter = pylon.ImageFormatConverter()
         converter.OutputPixelFormat = pylon.PixelType_BGR8packed # OpenCV uses BGR
         
-        while camera.IsGrabbing() and camera_running:
+        while cam_instance.IsGrabbing() and camera_running:
             try:
-                grabResult = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                grabResult = cam_instance.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
                 if grabResult.GrabSucceeded():
                     image = converter.Convert(grabResult)
                     img_array = image.GetArray()
@@ -109,10 +136,6 @@ def camera_thread_func():
                 print(f"OpenCV processing error: {e_cv}")
                 time.sleep(0.1)
 
-
-        camera.StopGrabbing()
-        camera.Close()
-        print("Camera stopped and closed.")
     except pylon.GenericException as e:
         print(f"Pylon camera initialization error: {e}")
         # Fallback to error image
@@ -125,6 +148,14 @@ def camera_thread_func():
     except Exception as e_outer:
         print(f"Outer camera thread error: {e_outer}")
     finally:
+        with camera_lock:
+            camera = None # Invalidate global camera object
+        if cam_instance:
+            if cam_instance.IsGrabbing():
+                cam_instance.StopGrabbing()
+            if cam_instance.IsOpen():
+                cam_instance.Close()
+            print("Camera stopped and closed.")
         print("Camera thread finished.")
 
 
@@ -254,14 +285,12 @@ app.layout = dbc.Container([
                         value=0, clearable=False, className="mb-2"),
             html.Label("Detection Threshold (V):"),
             dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("Camera Trigger Delay (ms):"),
-            dcc.Slider(id='camera-delay-slider', min=0, max=0.5, step=0.02, value=0.1, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Sort Trigger Delay (ms):"),
             dcc.Slider(id='sort-delay-slider', min=0, max=0.5, step=0.02, value=0.1, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("Datapoint Count:"),
-            dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
             html.Hr(),
             html.H6("Scatter Plot Settings"),
+            html.Label("Datapoint Count:"),
+            dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
             html.Label("X-Axis Data:"),
             dcc.Dropdown(id='x-axis-dropdown', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
             html.Label("Y-Axis Data:"),
@@ -332,7 +361,22 @@ app.layout = dbc.Container([
             html.P(
                 "Camera disabled: pypylon or OpenCV not installed.",
                 style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not camera_available else 'none'}
-            )
+            ),
+            html.Div([
+                html.Hr(),
+                dbc.Checkbox(
+                    id="camera-trigger-mode-checkbox",
+                    label="Enable Hardware Trigger",
+                    value=False, # Default to Freerun
+                    className="mb-2"
+                ),
+                html.Label("Exposure Time (µs):"),
+                dcc.Slider(id='camera-exposure-slider', min=28, max=200, step=1, value=28, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                html.Label("Camera Trigger Delay (µs):"),
+                dcc.Slider(id='camera-trigger-delay-slider', min=0, max=1000, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                html.Div(id='camera-settings-status', className="mt-2")
+            ], style={'display': 'block' if camera_available else 'none'},
+            ),
         ], md=3)
     ]),
 ], fluid=True)
@@ -513,20 +557,6 @@ def update_detection_threshold(threshold_volts, channel):
 
 
 @app.callback(
-    Output('camera-delay-slider', 'className'), # Dummy output to hang the callback on
-    Input('camera-delay-slider', 'value'),
-    prevent_initial_call=True
-)
-def update_camera_delay(delay_ms):
-    if delay_ms is not None:
-        # Convert from ms to us for the FPGA
-        delay_us = int(delay_ms * 1000)
-        with lock:
-            if instrument:
-                instrument.set_memory_variable("camera_trig_delay", delay_us)
-    return "" # No class change needed
-
-@app.callback(
     Output('sort-delay-slider', 'className'), # Dummy output to hang the callback on
     Input('sort-delay-slider', 'value'),
     prevent_initial_call=True
@@ -577,16 +607,80 @@ def update_detection_channel(channel):
     return alert_msg, new_slider_value
 
 @app.callback(
-        Output('buffer-spinner', 'className'), 
-        [Input('buffer-spinner', 'value')], 
-        prevent_initial_call=True
+    Output('camera-settings-status', 'children', allow_duplicate=True),
+    Input('camera-trigger-mode-checkbox', 'value'),
+    prevent_initial_call=True
 )
-def update_buffer(value):
-    if value is not None:
-        with lock:
-            if simulate: instrument.buffer_length = value
-    return "mb-2"
+def manage_camera_thread_for_trigger_mode(hw_trigger_enabled):
+    global cam_thread, camera_running, camera_config
 
+    # Update the global config that the thread will use on startup
+    camera_config['hw_trigger'] = hw_trigger_enabled
+
+    # Stop the existing camera thread
+    if cam_thread and cam_thread.is_alive():
+        print("Stopping camera thread for mode change...")
+        camera_running = False
+        cam_thread.join(timeout=7)
+        if cam_thread.is_alive():
+            msg = "Error: Camera thread did not stop in time. Mode not changed."
+            print(msg)
+            return dbc.Alert(msg, color="danger", duration=5000)
+        print("Camera thread stopped.")
+
+    # Start a new camera thread which will use the new config
+    print(f"Starting new camera thread...")
+    camera_running = True
+    cam_thread = threading.Thread(target=camera_thread_func, daemon=True)
+    cam_thread.start()
+
+    status_str = "Hardware Trigger" if hw_trigger_enabled else "Freerun"
+    msg = f"Camera restarting in {status_str} mode."
+    return dbc.Alert(msg, color="info", duration=4000)
+
+@app.callback(
+    Output('camera-settings-status', 'children'),
+    Input('camera-exposure-slider', 'value'),
+    Input('camera-trigger-delay-slider', 'value'),
+    prevent_initial_call=True
+)
+def update_camera_settings(exposure_us, delay_us):
+    global camera, camera_lock
+    
+    msgs = []
+    triggered_ids = [p['prop_id'].split('.')[0] for p in dash.callback_context.triggered]
+
+    with camera_lock:
+        if not (camera and camera.IsOpen()):
+            # Don't show an error to the user if the camera is just not ready yet.
+            return dash.no_update
+        
+        try:
+            if 'camera-exposure-slider' in triggered_ids:
+                current_val = camera.ExposureTime.GetValue()
+                print(f"DEBUG: Setting Exposure. Current: {current_val:.1f}, New: {exposure_us}")
+                camera.ExposureTime.SetValue(float(exposure_us))
+                new_val = camera.ExposureTime.GetValue()
+                print(f"DEBUG: Exposure set. Value read back: {new_val:.1f}")
+                msgs.append(f"Exposure: {exposure_us} µs.")
+            
+            if 'camera-trigger-delay-slider' in triggered_ids:
+                camera.TriggerDelay.SetValue(float(delay_us))
+                msgs.append(f"Delay: {delay_us} µs.")
+
+        except pylon.GenericException as e:
+            msg = f"Error setting camera parameter: {e}"
+            print(msg)
+            return dbc.Alert(msg, color="danger", duration=4000)
+        except Exception as e:
+            msg = f"An unexpected error occurred: {e}"
+            print(msg)
+            return dbc.Alert(msg, color="danger", duration=4000)
+
+    if msgs:
+        return dbc.Alert(" ".join(msgs), color="success", duration=2000)
+
+    return dash.no_update
 @app.callback(
     [Output('detection-button', 'children'),
      Output('detection-button', 'color'),
