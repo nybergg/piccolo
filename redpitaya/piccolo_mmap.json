@@ -32,6 +32,20 @@
         "units": "microseconds"
         },
         {
+        "name": "camera_trig_delay",
+        "addr": "0x30",
+        "dtype": "32'd",
+        "default": 100,
+        "desc": "Delay for camera trigger in us."
+        },
+        {
+        "name": "camera_trig_duration",
+        "addr": "0x34",
+        "dtype": "32'd",
+        "default": 50,
+        "desc": "Duration of camera trigger in us."
+        },
+        {
         "name": "sort_duration",
         "addr": "0x000028",
         "dtype": "32'd",

@@ -578,13 +578,13 @@ assign trig_output_sel = daisy_mode[2] ? trig_asg_out : scope_trigo;
 // The red_pitaya_asg module is not instantiated in this top module, so trig_asg_out is undriven.
 assign trig_asg_out = 1'b0;
 
-assign exp_p_alt  = {DWE{1'b0}};
-assign exp_n_alt  = {{DWE-8{1'b0}},  can_on,  can_on, 5'h0, daisy_mode[1]  };
+assign exp_p_alt  = {{DWE-4{1'b0}}, 2'b11, 2'b0}; // Always enable alternate function for pins 1 and 2
+assign exp_n_alt  = {{DWE-8{1'b0}},  can_on,  can_on, 5'h0, daisy_mode[1]};
 
-assign exp_p_altr = {DWE{1'b0}};
+assign exp_p_altr = {{DWE-4{1'b0}}, camera_trig, sort_trig, 2'b0}; // exp_p[2]=camera_trig, exp_p[1]=sort_trig
 assign exp_n_altr = {{DWE-8{1'b0}}, CAN0_tx, CAN1_tx, 5'h0, trig_output_sel};
 
-assign exp_p_altd = {DWE{1'b0}};
+assign exp_p_altd = {{DWE-4{1'b0}}, 2'b11, 2'b0};
 assign exp_n_altd = {{DWE-8{1'b0}},   1'b1,   1'b1, 5'h0, 1'b1};
 
 genvar GM;

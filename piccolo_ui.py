@@ -813,7 +813,7 @@ def set_fpga_register(n_clicks, values, ids):
                         elif 'width_thresh' in register_name:
                             # User enters ms, convert to us for raw value
                             final_value = value_to_set * 1000.0
-                    elif 'sort_delay' in register_name or 'sort_duration' in register_name:
+                    elif 'sort_delay' in register_name or 'sort_duration' in register_name or 'camera_trig_delay' in register_name or 'camera_trig_duration' in register_name:
                         # User enters ms, convert to us for raw value
                         final_value = value_to_set * 1000.0
 

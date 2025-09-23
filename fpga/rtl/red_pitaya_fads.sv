@@ -65,6 +65,9 @@ reg [MEM -1:0]  sort_end_us                 = 32'd0;    // End time for sorting 
 reg [MEM -1:0]  sort_delay_end_us           = 32'd0;    // End time for sorting delay in microseconds
 reg [MEM -1:0]  sort_duration               = 32'd50;   // Duration of sorting in microseconds
 reg [MEM -1:0]  sort_delay                  = 32'd100;  // Delay before sorting in microseconds
+reg [MEM -1:0]  camera_trig_delay           = 32'd100;  // Delay before camera trigger in us
+reg [MEM -1:0]  camera_trig_duration        = 32'd50;   // Duration of camera trigger in us
+
 
 // Multi Channel registers and wires
 reg  [CHNL-1:0] active_channels_o;
@@ -270,7 +273,6 @@ always @(posedge clk_i) begin
             if (!detection_enable || !rstn_i) begin
                 state <= 3'd0;                
                 sort_trig <= 1'b0;
-                camera_trig <= 1'b0;                
                 
                 droplet_id <= 32'd0;
                 droplet_counter <= 32'd0;
@@ -421,11 +423,9 @@ always @(posedge clk_i) begin
             else begin 
                 debug <= 8'b00100000;
                 if (general_timer_us < sort_end_us) begin
-                    debug <= 8'b11100000;
-                    camera_trig <= 1'b1;
+                    debug <= 8'b11100000;                    
                     sort_trig <= 1'b1;
                 end else begin
-                    camera_trig <= 1'b0;
                     sort_trig <= 1'b0;
                     debug <= 8'b10000000;
                     state <= 3'd1;
@@ -435,6 +435,50 @@ always @(posedge clk_i) begin
     endcase
 end
 
+////////////////////////////////////////////////////////////////////////////////
+// Camera Trigger State Machine
+////////////////////////////////////////////////////////////////////////////////
+
+reg [1:0] camera_trig_state = 2'd0; // 0:IDLE, 1:DELAY, 2:PULSE
+reg [MEM-1:0] camera_trig_delay_end_us;
+reg [MEM-1:0] camera_trig_end_us;
+wire camera_fsm_start_event;
+
+// The camera trigger event is a positive droplet detection while sorting is enabled.
+// This is a one-cycle pulse because the main FSM is in state 3 for only one cycle per event.
+assign camera_fsm_start_event = (state == 3'd3) && sort_enable && droplet_positive;
+
+always @(posedge clk_i) begin
+    if (!detection_enable || !rstn_i) begin
+        camera_trig_state <= 2'd0;
+        camera_trig <= 1'b0;
+    end else begin
+        // Default assignment to turn trigger off
+        camera_trig <= 1'b0;
+
+        case (camera_trig_state)
+            2'd0: begin // IDLE
+                if (camera_fsm_start_event) begin
+                    camera_trig_state <= 2'd1;
+                    camera_trig_delay_end_us <= general_timer_us + camera_trig_delay;
+                    camera_trig_end_us <= general_timer_us + camera_trig_delay + camera_trig_duration;
+                end
+            end
+            2'd1: begin // DELAY
+                if (general_timer_us >= camera_trig_delay_end_us) begin
+                    camera_trig_state <= 2'd2;
+                end
+            end
+            2'd2: begin // PULSE
+                if (general_timer_us >= camera_trig_end_us) begin
+                    camera_trig_state <= 2'd0;
+                end else begin
+                    camera_trig <= 1'b1; // Override default to turn trigger on
+                end
+            end
+        endcase
+    end
+end
 
 ////////////////////////////////////////////////////////////////////////////////
 // System Bus Interface - Read and Write
@@ -464,6 +508,9 @@ always @(posedge clk_i)
         min_area_threshold  <= '{default:32'h00000001};
         low_area_threshold  <= '{default:32'h000000ff};
         high_area_threshold  <= '{default:32'hccddeeff};
+
+        camera_trig_delay    <= 32'd100;
+        camera_trig_duration <= 32'd50;
                
         enabled_channels <= 4'b1111;
         detection_channel <= 3'h0;
@@ -474,6 +521,8 @@ always @(posedge clk_i)
         if (sys_addr[19:0]==20'h00024)                    sort_delay    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00028)                 sort_duration    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h0002C)                   sort_enable    <= sys_wdata[0:0];
+        if (sys_addr[19:0]==20'h00030)             camera_trig_delay    <= sys_wdata[MEM-1:0];
+        if (sys_addr[19:0]==20'h00034)          camera_trig_duration    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h00300)              enabled_channels    <= sys_wdata[CHNL-1:0];
         if (sys_addr[19:0]==20'h00304)             detection_channel    <= sys_wdata[   3-1:0];
 
@@ -578,41 +627,44 @@ always @(posedge clk_i)
             20'h01108: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[2]}  ; end
             20'h0110C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},      high_area_threshold[3]}  ; end
 
-            20'h00020: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},         detection_enable}     ; end
-            20'h00024: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               sort_delay}     ; end
-            20'h00028: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},            sort_duration}     ; end
-            20'h0002C: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},              sort_enable}     ; end
-            20'h00200: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},               droplet_id}     ; end // unique droplet identifier of the last fully analysed droplet
-            
-            20'h00204: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[0]} ; end // output of the droplet sorter for each channel
-            20'h00208: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[1]} ; end
-            20'h0020C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[2]} ; end
-            20'h00210: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},    cur_droplet_intensity[3]} ; end
+            20'h00020: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},            detection_enable}  ; end
+            20'h00024: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},                  sort_delay}  ; end
+            20'h00028: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},               sort_duration}  ; end
+            20'h0002C: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},                 sort_enable}  ; end
+            20'h00030: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},           camera_trig_delay}  ; end
+            20'h00034: begin sys_ack <= sys_en;  sys_rdata <= {{32-   1{1'b0}},        camera_trig_duration}  ; end
 
-            20'h0021C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[0]} ; end
-            20'h00220: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[1]} ; end
-            20'h00224: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[2]} ; end
-            20'h00228: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},        cur_droplet_width[3]} ; end
+            20'h00200: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},                  droplet_id}  ; end // unique droplet identifier of the last fully analysed droplet
+            
+            20'h00204: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     cur_droplet_intensity[0]} ; end // output of the droplet sorter for each channel
+            20'h00208: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     cur_droplet_intensity[1]} ; end
+            20'h0020C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     cur_droplet_intensity[2]} ; end
+            20'h00210: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},     cur_droplet_intensity[3]} ; end
+
+            20'h0021C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},         cur_droplet_width[0]} ; end
+            20'h00220: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},         cur_droplet_width[1]} ; end
+            20'h00224: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},         cur_droplet_width[2]} ; end
+            20'h00228: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},         cur_droplet_width[3]} ; end
 
             20'h00234: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[0]} ; end
             20'h00238: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[1]} ; end
             20'h0023C: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[2]} ; end
             20'h00240: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},          cur_droplet_area[3]} ; end
 
-            20'h0024C: begin sys_ack <= sys_en;  sys_rdata <= {{32-  16{1'b0}},   droplet_classification}     ; end // results of the state machine droplet classification
-            20'h00250: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},              cur_time_us}     ; end // real time value fast changing
+            20'h0024C: begin sys_ack <= sys_en;  sys_rdata <= {{32-  16{1'b0}},      droplet_classification}  ; end // results of the state machine droplet classification
+            20'h00250: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},                 cur_time_us}  ; end // real time value fast changing
 
-            20'h00254: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},          droplet_counter}     ; end
-            20'h00258: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},   sorted_droplet_counter}     ; end
-            20'h0025C: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},        droplet_period_us}     ; end
+            20'h00254: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},             droplet_counter}  ; end
+            20'h00258: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},      sorted_droplet_counter}  ; end
+            20'h0025C: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},           droplet_period_us}  ; end
 
-            20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},         enabled_channels}     ; end // boolean, starting with channel one as the digit (0/1) on the right
-            20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},        detection_channel}     ; end // number 0-3, indicates the master channel for droplet detection
+            20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},            enabled_channels}  ; end // boolean, starting with channel one as the digit (0/1) on the right
+            20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},           detection_channel}  ; end // number 0-3, indicates the master channel for droplet detection
 
-            20'h0030C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[0]}     ; end // ADC value for each channel seperately (only one active at a time during multiplexing)
-            20'h00310: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[1]}     ; end
-            20'h00314: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[2]}     ; end
-            20'h00318: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[3]}     ; end
+            20'h0030C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},               adc_values[0]}  ; end // ADC value for each channel seperately (only one active at a time during multiplexing)
+            20'h00310: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},               adc_values[1]}  ; end
+            20'h00314: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},               adc_values[2]}  ; end
+            20'h00318: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},               adc_values[3]}  ; end
 
             default:   begin sys_ack <= sys_en;  sys_rdata <= 32'h0                                 ; end
         endcase
