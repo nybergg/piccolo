@@ -42,7 +42,7 @@
         "name": "camera_trig_delay",
         "addr": "0x30",
         "dtype": "32'd",
-        "default": 100,
+        "default": 0,
         "units": "microseconds"
         },
         {
