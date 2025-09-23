@@ -65,7 +65,7 @@ class Instrument:
             "sort_duration": 50,
             "sort_enable": 1,
             "enabled_channels": 15,
-            "droplet_sensing_addr": 0,
+            "detection_channel": 0,
         }
         for i in range(4):
             self.fpga_registers[f"min_intensity_thresh[{i}]"] = -175
@@ -437,15 +437,17 @@ class Instrument:
         return self.sort_gates
     
 
-    def set_detection_threshold(self, thresh, thresh_key = "min_intensity_thresh[0]"):
-
-        if self.verbose:
-            print(f"[Instrument] Setting detection threshold for {thresh_key}: {thresh_key}")
+    def set_detection_threshold(self, thresh, ch):
         
-        ch = int(thresh_key[thresh_key.find('[')+1:thresh_key.find(']')])
-        thresh_raw = self.convert_volts_to_raw(thresh, ch)    
+        if self.verbose:
+            print(f"[Instrument] Setting detection channel as {ch}")
+            print(f"[Instrument] Setting detection threshold to {thresh}")
+        
+        thresh_key = f"min_intensity_thresh[{ch}]"
+        thresh_raw = self.convert_volts_to_raw(thresh, ch) #convert volts to raw ADC value   
 
         # Write sort_gates to FPGA memory
+        self.set_memory_variable("detection_channel", ch)
         self.set_memory_variable(thresh_key, int(thresh_raw))
         
         return thresh

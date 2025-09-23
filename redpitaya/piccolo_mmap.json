@@ -19,7 +19,7 @@
         "default": "0011"
         },
         {
-        "name": "droplet_sensing_addr",
+        "name": "detection_channel",
         "addr": "0x000304",
         "dtype": "3'b",
         "default": "0"

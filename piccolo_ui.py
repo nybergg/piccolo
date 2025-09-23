@@ -506,9 +506,44 @@ def set_enabled_channels(selected_channels):
 def update_detection_threshold(threshold_volts, channel):
     with lock:
         if instrument:
-            thresh_key = f"min_intensity_thresh[{channel}]"
-            instrument.set_detection_threshold(thresh=threshold_volts, thresh_key=thresh_key)
+            instrument.set_detection_threshold(thresh=threshold_volts, ch=channel)
     return "" # No actual class change needed
+
+
+@app.callback(
+    [Output('fpga-set-status', 'children', allow_duplicate=True),
+     Output('threshold-slider', 'value')],
+    Input('threshold-channel-dropdown', 'value'),
+    prevent_initial_call=True
+)
+def update_detection_channel(channel):
+    alert_msg = dash.no_update
+    new_slider_value = dash.no_update
+
+    with lock:
+        if instrument:
+            try:
+                # 1. Set the detection channel on the FPGA
+                instrument.set_memory_variable("detection_channel", channel)
+                msg = f"Success: Detection channel updated to {channel}."
+                print(msg)
+                alert_msg = dbc.Alert(msg, color="success", dismissable=True, duration=4000)
+
+                # 2. Get the threshold for the new channel to update the slider
+                converted_regs = instrument.get_fpga_registers_converted()
+                thresh_key = f"min_intensity_thresh[{channel}]"
+                
+                if thresh_key in converted_regs:
+                    new_slider_value = converted_regs[thresh_key][0]
+                else:
+                    print(f"Warning: Could not find {thresh_key} in converted registers to update slider.")
+
+            except Exception as e:
+                msg = f"Error updating detection channel: {e}"
+                print(msg)
+                alert_msg = dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
+    
+    return alert_msg, new_slider_value
 
 @app.callback(
         Output('buffer-spinner', 'className'), 

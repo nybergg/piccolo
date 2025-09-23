@@ -68,10 +68,8 @@ reg [MEM -1:0]  sort_delay                  = 32'd100;  // Delay before sorting 
 
 // Multi Channel registers and wires
 reg  [CHNL-1:0] active_channels_o;
-wire [CHNL-1:0] droplet_sensing_channel;                                    // Channel for droplet sensing
-reg  [3-1:0]    droplet_sensing_addr;                                       // Address for droplet sensing
+reg  [3-1:0]    detection_channel;                                       // Address for droplet sensing
 reg  [CHNL-1:0] enabled_channels            = 4'b1111;                      // Enabled channels, one bit per channel
-assign          droplet_sensing_channel     = (1 << droplet_sensing_addr);  // one-hot encode the sensing channel
 assign          active_channels_o           = '1;                           // All channels are active outputs
 
 // Intensity (result of droplet classification) for all channels
@@ -299,15 +297,15 @@ always @(posedge clk_i) begin
             debug <= 8'b00000010;
             if (!detection_enable || !rstn_i)
                 state <= 3'd0;
-            else if (enabled_channels[droplet_sensing_addr] && adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
+            else if (enabled_channels[detection_channel] && adc_values[detection_channel] >= min_intensity_threshold[detection_channel]) begin
                 signal_width <= '{default:0};
                 signal_area  <= '{default:0};
                 signal_max   <= '{default:-14'sd8192};
                         
                 // Reset and start droplet evaluation for the sensing channel
-                signal_width[droplet_sensing_addr] <= 32'd1;
-                signal_area[droplet_sensing_addr]  <= adc_values[droplet_sensing_addr];
-                signal_max[droplet_sensing_addr]   <= adc_values[droplet_sensing_addr];
+                signal_width[detection_channel] <= 32'd1;
+                signal_area[detection_channel]  <= adc_values[detection_channel];
+                signal_max[detection_channel]   <= adc_values[detection_channel];
                 state <= 3'd2;
             end
             
@@ -327,7 +325,7 @@ always @(posedge clk_i) begin
                 end
 
                 // Based on the droplet-sensing channel signal: increment width and accumulate area for all channels.
-                if (adc_values[droplet_sensing_addr] >= min_intensity_threshold[droplet_sensing_addr]) begin
+                if (adc_values[detection_channel] >= min_intensity_threshold[detection_channel]) begin
                     for (i = 0; i < CHNL; i = i + 1) begin
                         if (enabled_channels[i]) begin // Check if channel is enabled
                             signal_width[i] <= signal_width[i] + 32'd1;
@@ -347,9 +345,9 @@ always @(posedge clk_i) begin
             else begin
                 debug <= 8'b00001000;
                 // Only update droplet outputs if the droplet meets all the threshold requirements:
-                if ((signal_width[droplet_sensing_addr] >= min_width_threshold[droplet_sensing_addr]) &&
-                    (signal_max[droplet_sensing_addr]  >= min_intensity_threshold[droplet_sensing_addr]) &&
-                    (signal_area[droplet_sensing_addr] >= min_area_threshold[droplet_sensing_addr]) &&
+                if ((signal_width[detection_channel] >= min_width_threshold[detection_channel]) &&
+                    (signal_max[detection_channel]  >= min_intensity_threshold[detection_channel]) &&
+                    (signal_area[detection_channel] >= min_area_threshold[detection_channel]) &&
                     (droplet_positive || droplet_negative)) begin
                     
                     // Update counters
@@ -468,7 +466,7 @@ always @(posedge clk_i)
         high_area_threshold  <= '{default:32'hccddeeff};
                
         enabled_channels <= 4'b1111;
-        droplet_sensing_addr <= 3'h0;
+        detection_channel <= 3'h0;
 
     end else if (sys_wen) begin
         // Writing to system bus
@@ -477,7 +475,7 @@ always @(posedge clk_i)
         if (sys_addr[19:0]==20'h00028)                 sort_duration    <= sys_wdata[MEM-1:0];
         if (sys_addr[19:0]==20'h0002C)                   sort_enable    <= sys_wdata[0:0];
         if (sys_addr[19:0]==20'h00300)              enabled_channels    <= sys_wdata[CHNL-1:0];
-        if (sys_addr[19:0]==20'h00304)          droplet_sensing_addr    <= sys_wdata[   3-1:0];
+        if (sys_addr[19:0]==20'h00304)             detection_channel    <= sys_wdata[   3-1:0];
 
         if (sys_addr[19:0]==20'h01000)    min_intensity_threshold[0]    <= sys_wdata[DWT-1:0];
         if (sys_addr[19:0]==20'h01004)    min_intensity_threshold[1]    <= sys_wdata[DWT-1:0];
@@ -604,12 +602,12 @@ always @(posedge clk_i)
             20'h0024C: begin sys_ack <= sys_en;  sys_rdata <= {{32-  16{1'b0}},   droplet_classification}     ; end // results of the state machine droplet classification
             20'h00250: begin sys_ack <= sys_en;  sys_rdata <= {{32- MEM{1'b0}},              cur_time_us}     ; end // real time value fast changing
 
-            20'h00254: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},          droplet_counter}     ; end
-            20'h00258: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},   sorted_droplet_counter}     ; end
-            20'h0025C: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},        droplet_period_us}     ; end
+            20'h00254: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},          droplet_counter}     ; end
+            20'h00258: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},   sorted_droplet_counter}     ; end
+            20'h0025C: begin sys_ack <= sys_en; sys_rdata  <= {{32- MEM{1'b0}},        droplet_period_us}     ; end
 
             20'h00300: begin sys_ack <= sys_en;  sys_rdata <= {{32-CHNL{1'b0}},         enabled_channels}     ; end // boolean, starting with channel one as the digit (0/1) on the right
-            20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},     droplet_sensing_addr}     ; end // number 0-3, indicates the master channel for droplet detection
+            20'h00304: begin sys_ack <= sys_en;  sys_rdata <= {{32-   3{1'b0}},        detection_channel}     ; end // number 0-3, indicates the master channel for droplet detection
 
             20'h0030C: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[0]}     ; end // ADC value for each channel seperately (only one active at a time during multiplexing)
             20'h00310: begin sys_ack <= sys_en;  sys_rdata <= {{32- DWT{1'b0}},            adc_values[1]}     ; end
