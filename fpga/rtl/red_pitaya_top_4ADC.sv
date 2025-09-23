@@ -581,7 +581,7 @@ assign trig_asg_out = 1'b0;
 assign exp_p_alt  = {{DWE-4{1'b0}}, 2'b11, 2'b0}; // Always enable alternate function for pins 1 and 2
 assign exp_n_alt  = {{DWE-8{1'b0}},  can_on,  can_on, 5'h0, daisy_mode[1]};
 
-assign exp_p_altr = {{DWE-4{1'b0}}, camera_trig, sort_trig, 2'b0}; // exp_p[2]=camera_trig, exp_p[1]=sort_trig
+assign exp_p_altr = {{DWE-4{1'b0}}, camera_trig, sort_trig, 2'b0}; // exp_p[2]=DIO3=camera_trig, exp_p[1]=DIO2=sort_trig
 assign exp_n_altr = {{DWE-8{1'b0}}, CAN0_tx, CAN1_tx, 5'h0, trig_output_sel};
 
 assign exp_p_altd = {{DWE-4{1'b0}}, 2'b11, 2'b0};

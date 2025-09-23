@@ -35,7 +35,7 @@ simulate = False
 launch_rp = True
 lock = threading.Lock() # For instrument data
 instrument = None
-camera_available = False
+camera_available = True
 SERVER_URL = "http://127.0.0.1:8050/"
 
 if simulate:
@@ -76,10 +76,10 @@ def camera_thread_func():
         camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
         camera.Open()
         # Configure camera parameters (e.g., resolution, exposure, gain)
-        camera.Width.SetValue(640)
-        camera.Height.SetValue(480)
-        camera.PixelFormat.SetValue("BGR8Packed") # Or Mono8, ensure it's a format OpenCV understands
-        camera.ExposureTime.SetValue(10000) # Example: 10ms
+        camera.Width.SetValue(2048)
+        camera.Height.SetValue(2048)
+        camera.PixelFormat.SetValue("Mono12p") 
+        camera.ExposureTime.SetValue(28) # Example: 10ms
 
         camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
         converter = pylon.ImageFormatConverter()
@@ -97,9 +97,7 @@ def camera_thread_func():
                     aspect_ratio = img_array.shape[0] / img_array.shape[1]
                     target_height = int(target_width * aspect_ratio)
                     img_resized = cv2.resize(img_array, (target_width, target_height))
-                    ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
-
-                    ret, jpeg = cv2.imencode('.jpg', img_array, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
+                    ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 75]) # Quality 0-100
                     if ret:
                         with frame_lock:
                             latest_frame_jpeg = jpeg.tobytes()
@@ -243,7 +241,7 @@ app.layout = dbc.Container([
                             {'label': '  Ch2', 'value': 2},
                             {'label': '  Ch3', 'value': 3}
                         ],
-                        value=[0, 1],  # Default value: all channels enabled
+                        value=[0, 1, 2, 3],  # Default value: all channels enabled
                         inline=False,
                         className="mb-2"
                     ),
@@ -256,6 +254,10 @@ app.layout = dbc.Container([
                         value=0, clearable=False, className="mb-2"),
             html.Label("Detection Threshold (V):"),
             dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+            html.Label("Camera Trigger Delay (ms):"),
+            dcc.Slider(id='camera-delay-slider', min=0, max=0.5, step=0.02, value=0.1, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+            html.Label("Sort Trigger Delay (ms):"),
+            dcc.Slider(id='sort-delay-slider', min=0, max=0.5, step=0.02, value=0.1, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Datapoint Count:"),
             dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
             html.Hr(),
@@ -508,6 +510,35 @@ def update_detection_threshold(threshold_volts, channel):
         if instrument:
             instrument.set_detection_threshold(thresh=threshold_volts, ch=channel)
     return "" # No actual class change needed
+
+
+@app.callback(
+    Output('camera-delay-slider', 'className'), # Dummy output to hang the callback on
+    Input('camera-delay-slider', 'value'),
+    prevent_initial_call=True
+)
+def update_camera_delay(delay_ms):
+    if delay_ms is not None:
+        # Convert from ms to us for the FPGA
+        delay_us = int(delay_ms * 1000)
+        with lock:
+            if instrument:
+                instrument.set_memory_variable("camera_trig_delay", delay_us)
+    return "" # No class change needed
+
+@app.callback(
+    Output('sort-delay-slider', 'className'), # Dummy output to hang the callback on
+    Input('sort-delay-slider', 'value'),
+    prevent_initial_call=True
+)
+def update_sort_delay(delay_ms):
+    if delay_ms is not None:
+        # Convert from ms to us for the FPGA
+        delay_us = int(delay_ms * 1000)
+        with lock:
+            if instrument:
+                instrument.set_memory_variable("sort_delay", delay_us)
+    return "" # No class change needed
 
 
 @app.callback(

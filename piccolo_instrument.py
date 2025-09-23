@@ -66,6 +66,8 @@ class Instrument:
             "sort_enable": 1,
             "enabled_channels": 15,
             "detection_channel": 0,
+            "camera_trig_delay": 100,
+            "camera_trig_duration": 50,
         }
         for i in range(4):
             self.fpga_registers[f"min_intensity_thresh[{i}]"] = -175
@@ -274,7 +276,7 @@ class Instrument:
                         # Based on cur_droplet_width conversion, raw is in us
                         display_value = numeric_value / 1000.0
                         unit = "ms"
-                elif 'sort_delay' in name or 'sort_duration' in name:
+                elif 'sort_delay' in name or 'sort_duration' in name or 'camera_trig_delay' in name or 'camera_trig_duration' in name:
                     # Assuming these are in microseconds
                     display_value = numeric_value / 1000.0
                     unit = "ms"
