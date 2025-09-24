@@ -47,6 +47,7 @@ class InstrumentSim:
         self._running = False
         self.sorter_on = True
         self.fpga_registers = {
+            'detection_channel': 0,
             'droplet_counter': 0,
             'sorted_droplet_counter': 0,
             'droplet_frequency': 0,
@@ -87,18 +88,19 @@ class InstrumentSim:
             print("\n%s: -> done generating signal"%self.name)            
         return None
 
-    def _analyze_drops(self, ch=1):
+    def _analyze_drops(self):
         if self.very_verbose:
             print("\n%s: analyzing drops"%self.name)
+        
+        detection_ch = self.fpga_registers.get('detection_channel', 0)
         # Analyze Drop Parameters from sipm Signals:
         # Find drops based on the signal and threshold of the specified channel:
-        drops, _ = find_peaks(self.signal[ch], height=self.threshold)
+        drops, _ = find_peaks(self.signal[detection_ch], height=self.threshold)
         if np.any(drops) == False:
             print('No peaks detected in reference channel')
         else:
             # Calculate fwhm of peaks to define time range for each drop:
-            widths, _, left_ips, right_ips = peak_widths(
-                self.signal[ch], drops, rel_height=0.5)
+            widths, _, left_ips, right_ips = peak_widths(self.signal[detection_ch], drops, rel_height=0.5)
             # Convert widths to time units:
             drop_widths = widths * self.sampling_interval_ms  
             # Filter drops based on width constraints:
@@ -195,10 +197,12 @@ class InstrumentSim:
 
         return self.droplet_data
 
-    def set_detection_threshold(self, thresh, thresh_key=None):
+    def set_detection_threshold(self, thresh, ch=0):
         if self.verbose:
             print("%s: setting threshold = %s"%(self.name, thresh))
+            print(f"%s: setting detection channel = {ch}" % self.name)
         self.threshold = thresh
+        self.set_memory_variable("detection_channel", ch)
         return None
 
     def set_gate_limits(self, sort_keys, limits):
@@ -224,6 +228,13 @@ class InstrumentSim:
         if self.verbose:
             print(f"%s: saving droplet data to {filename}"%self.name)
         self.droplet_data.to_csv(filename, index=False)
+        return None
+
+    def clear_droplet_data(self):
+        """Clears the internal droplet data buffer."""
+        if self.verbose:
+            print(f"%s: clearing droplet data buffer."%self.name)
+        self.droplet_data = pd.DataFrame()
         return None
 
     def save_adc_log(self, filename):

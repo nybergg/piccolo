@@ -16,7 +16,7 @@
         "name": "enabled_channels",
         "addr": "0x000300",
         "dtype": "4'b",
-        "default": "0011"
+        "default": "1111"
         },
         {
         "name": "detection_channel",

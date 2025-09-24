@@ -163,7 +163,7 @@ def camera_thread_func():
 
 # Dark Theme Setup
 pio.templates.default = "plotly_dark"
-external_stylesheets = [dbc.themes.CYBORG]
+external_stylesheets = [dbc.themes.CYBORG, dbc.icons.BOOTSTRAP, '/assets/custom.css']
 
 # Dash App Initialization
 app = dash.Dash(__name__,
@@ -203,20 +203,20 @@ def video_feed():
 axis_options_list = [
     "cur_droplet_intensity[0]", "cur_droplet_intensity[1]", "cur_droplet_intensity[2]", "cur_droplet_intensity[3]",
     "cur_droplet_intensity_v[0]", "cur_droplet_intensity_v[1]", "cur_droplet_intensity_v[2]", "cur_droplet_intensity_v[3]",
-    "cur_droplet_width[0]", "cur_droplet_width[1]", "cur_droplet_width[2]", "cur_droplet_width[3]",
     "cur_droplet_width_ms[0]", "cur_droplet_width_ms[1]", "cur_droplet_width_ms[2]", "cur_droplet_width_ms[3]",
-    "cur_droplet_area[0]", "cur_droplet_area[1]", "cur_droplet_area[2]", "cur_droplet_area[3]",
     "cur_droplet_area_vms[0]", "cur_droplet_area_vms[1]", "cur_droplet_area_vms[2]", "cur_droplet_area_vms[3]",
 ]
 axis_options_dict = [{'label': i, 'value': i} for i in axis_options_list]
 initial_x_key = "cur_droplet_intensity_v[0]"
 initial_y_key = "cur_droplet_intensity_v[1]"
+initial_x_key_2 = "cur_droplet_intensity_v[2]"
+initial_y_key_2 = "cur_droplet_intensity_v[3]"
 
 # Dash App Layout
 app.layout = dbc.Container([
     dcc.Store(id='timer-store', data=[]),
     dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
-    dcc.Store(id='axis-keys-store', data={'x': initial_x_key, 'y': initial_y_key}),
+    dcc.Store(id='axis-keys-store', data={'x1': initial_x_key, 'y1': initial_y_key, 'x2': initial_x_key_2, 'y2': initial_y_key_2}),
     dcc.Store(id='sorter-state-store', data=False), # Sorter is OFF by default
     dcc.Interval(id='counter-interval-component', interval=1000, n_intervals=0),
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
@@ -225,124 +225,154 @@ app.layout = dbc.Container([
         # Controls Column (Left)
         dbc.Col([
             html.H5("Instrument Controls"),
-            html.Hr(),
-            # Detection and Sorting
-            html.H6("Detection and Sorting Controls"),
-            dbc.Row([
-                dbc.Col(width=1), # Spacer column
-                dbc.Col([
-                    dbc.Row(dbc.Button("Detection: OFF", id="detection-button", color="secondary", size="sm", className="w-100 mb-3")),
-                    dbc.Row(dbc.Button("Sorting: OFF", id="sorter-button", color="secondary", size="sm", className="w-100 mb-3")),
-                ], width=4, align="center"),
-                dbc.Col(width=1), # Spacer column
-                dbc.Col([
-                    dbc.Row([
-                        dbc.Col(html.Div("Total:", style={'fontWeight': 'bold'})),
-                        dbc.Col(html.Div("...", id='droplet-count-div')),
-                    ], align="center"),
-                    dbc.Row([
-                        dbc.Col(html.Div("Sorted:", style={'fontWeight': 'bold'})),
-                        dbc.Col(html.Div("...", id='sorted-droplet-count-div')),
-                    ], align="center"),
-                    dbc.Row([
-                        dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'})),
-                        dbc.Col(html.Div("... Hz", id='droplet-frequency-div')),
-                    ], align="center"),
-                ], align="start", width = 5),
-            ]),
-            html.Hr(),
-            # Lasers
-            html.H6("Laser Controls"),
-            html.Label("488nm Laser Power:"),
-            dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("520nm Laser Power:"),
-            dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Hr(),
-            # Detection Threshold
-            html.H6("Droplet Detection Settings"),
-            html.Label("Enabled Detection Channels:"),
-            dbc.Row([
-                dbc.Col(width=1), # Spacer column
-                dbc.Col(
-                    dbc.Checklist(
-                        id='enabled-channels-checklist',
-                        options=[
-                            {'label': '  Ch0', 'value': 0},
-                            {'label': '  Ch1', 'value': 1},
-                            {'label': '  Ch2', 'value': 2},
-                            {'label': '  Ch3', 'value': 3}
-                        ],
-                        value=[0, 1, 2, 3],  # Default value: all channels enabled
-                        inline=False,
-                        className="mb-2"
-                    ),
-                ),
-                dbc.Col(width=1)
-            ]),
-            html.Label("Detection Threshold Channel:"),
-            dcc.Dropdown(id='threshold-channel-dropdown',
-                        options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
-                        value=0, clearable=False, className="mb-2"),
-            html.Label("Detection Threshold (V):"),
-            dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Label("Sort Trigger Delay (ms):"),
-            dcc.Slider(id='sort-delay-slider', min=0, max=0.5, step=0.02, value=0.1, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-            html.Hr(),
-            html.H6("Scatter Plot Settings"),
-            html.Label("Datapoint Count:"),
-            dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
-            html.Label("X-Axis Data:"),
-            dcc.Dropdown(id='x-axis-dropdown', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
-            html.Label("Y-Axis Data:"),
-            dcc.Dropdown(id='y-axis-dropdown', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
-            dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-            dbc.Row([
-                dbc.Col(dbc.Input(id='x-min-input', type='number', placeholder='X Min', value=0.1, size="sm", step="any"), width=6),
-                dbc.Col(dbc.Input(id='x-max-input', type='number', placeholder='X Max', value=3, size="sm", step="any"), width=6),
-            ], className="mb-2"),            dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
-            dbc.Row([
-                dbc.Col(dbc.Input(id='y-min-input', type='number', placeholder='Y Min', value=0.1, size="sm", step="any"), width=6),
-                dbc.Col(dbc.Input(id='y-max-input', type='number', placeholder='Y Max', value=3, size="sm", step="any"), width=6),
-            ], className="mb-3"),            html.Hr(),
-            html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
-            html.Hr(),
-            html.H6("Log Files"),
-            html.Label("Scatter Log Filename:"),
-            dbc.Input(id='scatter-filename-input', type='text', value="droplet_log.csv", className="mb-1"),
-            dbc.Button('Save Scatter Log', id='save-scatter-button', n_clicks=0, color="success", className="w-100 mb-3"),
-            html.Label("Signal Log Filename:"),
-            dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
-            dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
-            html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
-            html.Hr(),
-            html.H5("FPGA Register Control", className="mt-3"),
-            html.P("Values are updated every 5 seconds. Enter a new value and press 'Set' to update a register on the FPGA."),
-            html.Div(id='fpga-set-status', className="mb-2"),
-            html.Div(id='fpga-register-div'),
+            dbc.Tabs([
+                dbc.Tab(label="Settings", children=[
+                    html.Div([
+                        # Detection and Sorting
+                        html.H6("Detection and Sorting Controls", className="mt-3"),
+                        dbc.Row([
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col([
+                                dbc.Row(dbc.Button("Detection: OFF", id="detection-button", color="secondary", size="sm", className="w-100 mb-3")),
+                                dbc.Row(dbc.Button("Sorting: OFF", id="sorter-button", color="secondary", size="sm", className="w-100 mb-3")),
+                            ], width=4, align="center"),
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col([
+                                dbc.Row([
+                                    dbc.Col(html.Div("Total:", style={'fontWeight': 'bold'})),
+                                    dbc.Col(html.Div("...", id='droplet-count-div')),
+                                ], align="center"),
+                                dbc.Row([
+                                    dbc.Col(html.Div("Sorted:", style={'fontWeight': 'bold'})),
+                                    dbc.Col(html.Div("...", id='sorted-droplet-count-div')),
+                                ], align="center"),
+                                dbc.Row([
+                                    dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'})),
+                                    dbc.Col(html.Div("... Hz", id='droplet-frequency-div')),
+                                ], align="center"),
+                            ], align="start", width = 5),
+                        ]),
+                        html.Hr(),
+                        # Lasers
+                        html.H6("Laser Controls"),
+                        html.Label("488nm Laser Power:"),
+                        dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                        html.Label("520nm Laser Power:"),
+                        dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                        html.Hr(),
+                        # Detection Threshold
+                        html.H6("Droplet Detection Settings"),
+                        html.Label("Enabled Detection Channels:"),
+                        dbc.Row([
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col(
+                                dbc.Checklist(
+                                    id='enabled-channels-checklist',
+                                    options=[
+                                        {'label': '  Ch0', 'value': 0},
+                                        {'label': '  Ch1', 'value': 1},
+                                        {'label': '  Ch2', 'value': 2},
+                                        {'label': '  Ch3', 'value': 3}
+                                    ],
+                                    value=[0, 1, 2, 3],  # Default value: all channels enabled
+                                    inline=False,
+                                    className="mb-2"
+                                ),
+                            ),
+                            dbc.Col(width=1)
+                        ]),
+                        html.Label("Detection Threshold Channel:"),
+                        dcc.Dropdown(id='threshold-channel-dropdown',
+                                    options=[{'label': f'Channel {i}', 'value': i} for i in range(4)],
+                                    value=0, clearable=False, className="mb-2"),
+                        html.Label("Detection Threshold (V):"),
+                        dcc.Slider(id='threshold-slider', min=0, max=2, step=0.01, value=0.05, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                        html.Label("Sort Trigger Delay (ms):"),
+                        dcc.Slider(id='sort-delay-slider', min=0, max=0.5, step=0.02, value=0.1, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                        html.Label("Datapoint Count:"),
+                        dcc.Input(id='buffer-spinner', type='number', min=0, max=10000, step=500, value=10000, className="mb-2"),
+                        html.Div(id='box-select-div', style={'border': '1px solid #555', 'padding': '10px', 'borderRadius': '5px'}, className="mb-3"),
+                        html.Hr(),
+                        html.H6("Log Files"),
+                        html.Label("Scatter Log Filename:"),
+                        dbc.Input(id='scatter-filename-input', type='text', value="droplet_log.csv", className="mb-1"),
+                        dbc.Button('Save Scatter', id='save-scatter-button', n_clicks=0, color="success", className="w-100"),
+                        html.Label("Signal Log Filename:"),
+                        dbc.Input(id='signal-filename-input', type='text', value="signal_log.csv", className="mb-1"),
+                        dbc.Button('Save Signal Log', id='save-signal-button', n_clicks=0, color="primary", className="w-100 mb-3"),
+                        html.Div(id='save-status-div', style={'marginTop': '10px', 'fontWeight': 'bold'}),
+                    ], style={'padding': '10px'})
+                ]),
+                dbc.Tab(label="FPGA Registers", children=[
+                    html.Div([
+                        html.P("Values are updated every 5 seconds. Enter a new value and press 'Set' to update a register on the FPGA.", className="mt-3"),
+                        html.Div(id='fpga-set-status', className="mb-2"),
+                        html.Div(id='fpga-register-div'),
+                    ], style={'padding': '10px'})
+                ]),
+            ])
         ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'}),
         
 
         # Instrument Data Column (Middle)
         dbc.Col([
             html.H5("Instrument Data"),
-            dcc.Graph(
-                id='scatter-plot',
-                style={'height': '45vh'},
-                figure={
-                    'layout': {
-                        'xaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)], 'autorange': False},
-                        'yaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)], 'autorange': False}
-                    }
-                }
-            ),
+            dbc.Row([
+                dbc.Col(dcc.Graph(
+                    id='scatter-plot-1',
+                    style={'height': '45vh'},
+                    figure={'layout': {'xaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)]},
+                                      'yaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)]}}}
+                ), width=6),
+                dbc.Col(dcc.Graph(
+                    id='scatter-plot-2',
+                    style={'height': '45vh'},
+                    figure={'layout': {'xaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)]},
+                                      'yaxis': {'type': 'log', 'range': [math.log10(0.1), math.log10(3)]}}}
+                ), width=6),
+            ]),
+            # --- Plot 1 Settings ---
+            dbc.Row([
+                dbc.Col([
+                        html.Label("X-Axis:"),
+                        dcc.Dropdown(id='x-axis-dropdown-1', options=axis_options_dict, value=initial_x_key, clearable=False, className="mb-2"),
+                        html.Label("Y-Axis:"),
+                        dcc.Dropdown(id='y-axis-dropdown-1', options=axis_options_dict, value=initial_y_key, clearable=False, className="mb-2"),
+                        dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio-1', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+                        dbc.Row([
+                            dbc.Col(dbc.Input(id='x-min-input-1', type='number', placeholder='X Min', value=0.1, size="sm", step="any"), width=6),
+                            dbc.Col(dbc.Input(id='x-max-input-1', type='number', placeholder='X Max', value=3, size="sm", step="any"), width=6),
+                        ], className="mb-2"),
+                        dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio-1', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+                        dbc.Row([
+                            dbc.Col(dbc.Input(id='y-min-input-1', type='number', placeholder='Y Min', value=0.1, size="sm", step="any"), width=6),
+                            dbc.Col(dbc.Input(id='y-max-input-1', type='number', placeholder='Y Max', value=3, size="sm", step="any"), width=6),
+                        ], className="mb-3")]),
+                dbc.Col([
+                        html.Label("X-Axis:"),
+                        dcc.Dropdown(id='x-axis-dropdown-2', options=axis_options_dict, value=initial_x_key_2, clearable=False, className="mb-2"),
+                        html.Label("Y-Axis:"),
+                        dcc.Dropdown(id='y-axis-dropdown-2', options=axis_options_dict, value=initial_y_key_2, clearable=False, className="mb-2"),
+                        dbc.Row([ dbc.Col(html.Label("X-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='x-scale-radio-2', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+                        dbc.Row([
+                            dbc.Col(dbc.Input(id='x-min-input-2', type='number', placeholder='X Min', value=0.1, size="sm", step="any"), width=6),
+                            dbc.Col(dbc.Input(id='x-max-input-2', type='number', placeholder='X Max', value=3, size="sm", step="any"), width=6),
+                        ], className="mb-2"),
+                        dbc.Row([ dbc.Col(html.Label("Y-Scale:"), width=4), dbc.Col(dcc.RadioItems(id='y-scale-radio-2', options=[{'label': 'Log', 'value': 'log'}, {'label': 'Linear', 'value': 'linear'}], value='log', inline=True, inputClassName="me-1"), width=8), ], className="mb-1"),
+                        dbc.Row([
+                            dbc.Col(dbc.Input(id='y-min-input-2', type='number', placeholder='Y Min', value=0.1, size="sm", step="any"), width=6),
+                            dbc.Col(dbc.Input(id='y-max-input-2', type='number', placeholder='Y Max', value=3, size="sm", step="any"), width=6),
+                        ], className="mb-3")]),
+                dbc.Button('Clear Scatter', id='clear-scatter-button', n_clicks=0, color="secondary", className="w-100"),
+            ]),
             html.Hr(className="my-2"),
             html.H6("SiPM Signals"),
-            dcc.Graph(id='signal-plot', style={'height': '28vh'}), # Adjusted height
+            dcc.Graph(id='signal-plot', style={'height': '25vh'}), # Adjusted height
             html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
         ], md=6),
 
         # Camera Column (Right)
-        dbc.Col([
+        dbc.Col([ # This column will now also host the scatter plot settings
             html.H5("Camera Controls"),
             html.Img(
                 src="/video_feed" if camera_available else "",
@@ -375,9 +405,8 @@ app.layout = dbc.Container([
                 html.Label("Camera Trigger Delay (µs):"),
                 dcc.Slider(id='camera-trigger-delay-slider', min=0, max=1000, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
                 html.Div(id='camera-settings-status', className="mt-2")
-            ], style={'display': 'block' if camera_available else 'none'},
-            ),
-        ], md=3)
+            ], style={'display': 'block' if camera_available else 'none'}),
+        ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
     ]),
 ], fluid=True)
 
@@ -386,33 +415,47 @@ app.layout = dbc.Container([
 
 @app.callback(
     Output('axis-keys-store', 'data'),
-    Input('x-axis-dropdown', 'value'),
-    Input('y-axis-dropdown', 'value')
+    Input('x-axis-dropdown-1', 'value'),
+    Input('y-axis-dropdown-1', 'value'),
+    Input('x-axis-dropdown-2', 'value'),
+    Input('y-axis-dropdown-2', 'value')
 )
-def update_axis_store(x_axis, y_axis):
-    return {'x': x_axis, 'y': y_axis}
+def update_axis_store(x1, y1, x2, y2):
+    return {'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2}
 
 @app.callback(
-    [Output('scatter-plot', 'figure'),
+    [Output('scatter-plot-1', 'figure'),
+     Output('scatter-plot-2', 'figure'),
      Output('signal-plot', 'figure'),
      Output('update-rate-label', 'children'),
      Output('timer-store', 'data')],
     [Input('interval-component', 'n_intervals'),
-     Input('x-axis-dropdown', 'value'),
-     Input('y-axis-dropdown', 'value'),
-     Input('x-scale-radio', 'value'),
-     Input('y-scale-radio', 'value'),
-     Input('x-min-input', 'value'),
-     Input('x-max-input', 'value'),
-     Input('y-min-input', 'value'),
-     Input('y-max-input', 'value')],
+     # Plot 1 Inputs
+     Input('x-axis-dropdown-1', 'value'),
+     Input('y-axis-dropdown-1', 'value'),
+     Input('x-scale-radio-1', 'value'),
+     Input('y-scale-radio-1', 'value'),
+     Input('x-min-input-1', 'value'),
+     Input('x-max-input-1', 'value'),
+     Input('y-min-input-1', 'value'),
+     Input('y-max-input-1', 'value'),
+     # Plot 2 Inputs
+     Input('x-axis-dropdown-2', 'value'),
+     Input('y-axis-dropdown-2', 'value'),
+     Input('x-scale-radio-2', 'value'),
+     Input('y-scale-radio-2', 'value'),
+     Input('x-min-input-2', 'value'),
+     Input('x-max-input-2', 'value'),
+     Input('y-min-input-2', 'value'),
+     Input('y-max-input-2', 'value')],
     [State('threshold-slider', 'value'),
      State('timer-store', 'data'),
      State('gate-selection-store', 'data'),
-     State('axis-keys-store', 'data')]
+     State('axis-keys-store', 'data')],
+    prevent_initial_call=True
 )
-def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
-                  x_min_user, x_max_user, y_min_user, y_max_user,
+def update_graphs(n, x_key_1, y_key_1, x_scale_1, y_scale_1, x_min_1, x_max_1, y_min_1, y_max_1,
+                  x_key_2, y_key_2, x_scale_2, y_scale_2, x_min_2, x_max_2, y_min_2, y_max_2,
                   threshold_value, timers, box_data, axis_keys):
     current_time = time.perf_counter(); timers.append(current_time); timers = timers[-100:]
     s_per_update = 0
@@ -429,69 +472,91 @@ def update_graphs(n, x_key_in, y_key_in, x_scale, y_scale,
             adc3 = instrument.adc3_data
             adc4 = instrument.adc4_data
             df = instrument.droplet_data
+            sort_gates = instrument.get_sort_gates()
 
-    x_key = axis_keys['x']
-    y_key = axis_keys['y']
     time_axis = np.linspace(0, 50, 4096)
 
     signal_fig = go.Figure()
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='CH0', line=dict(color='royalblue')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='CH1', line=dict(color='limegreen')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc3, mode='lines', name='CH2', line=dict(color='gold')))
-    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc4, mode='lines', name='CH3', line=dict(color='crimson')))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc1, mode='lines', name='CH0', line=dict(color="#3fe4fa")))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc2, mode='lines', name='CH1', line=dict(color="#71f445")))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc3, mode='lines', name='CH2', line=dict(color="#ddfd25")))
+    signal_fig.add_trace(go.Scattergl(x=time_axis, y=adc4, mode='lines', name='CH3', line=dict(color="#b83671")))
     signal_fig.add_hline(y=threshold_value, line_dash="dot", line_color="mediumseagreen", annotation_text="Threshold")
-    signal_fig.update_layout(title="SiPM Data", xaxis_title="Time (ms)", yaxis_title="Voltage", yaxis_range=[0, 1.2], legend_title="Signals", uirevision='signal_layout')
+    signal_fig.update_layout(xaxis_title="Time (ms)", yaxis_title="Voltage", yaxis_range=[0, 1.2], legend_title="Signals", uirevision='signal_layout')
     update_text = f"Update Rate: {1 / s_per_update:.01f} Hz ({s_per_update * 1000:.00f} ms)" if s_per_update > 0 else "Calculating..."
 
-    if x_key not in df.columns or y_key not in df.columns:
-        missing_key = x_key if x_key not in df.columns else y_key
-        empty_scatter = go.Figure().update_layout(title=f"Error: Axis '{missing_key}' not found in data")
-        return empty_scatter, signal_fig, update_text, timers
+    # --- Helper function to generate a scatter plot ---
+    def make_scatter(plot_num, x_key, y_key, x_scale, y_scale, x_min, x_max, y_min, y_max, gates):
+        if x_key not in df.columns or y_key not in df.columns:
+            missing_key = x_key if x_key not in df.columns else y_key
+            return go.Figure().update_layout(title=f"Error: Axis '{missing_key}' not found")
 
-    x = df[x_key].values; y = df[y_key].values; density = []
-    if len(x) > 0 and len(y) > 0:
-        try:
-            bins = 25; H, xedges, yedges = np.histogram2d(x, y, bins=bins)
-            ix = np.searchsorted(xedges, x, side='right') - 1; iy = np.searchsorted(yedges, y, side='right') - 1
-            ix = np.clip(ix, 0, bins - 1); iy = np.clip(iy, 0, bins - 1)
-            density = H[ix, iy]
-        except Exception as e: print(f"Density/Hist error: {e}"); density = []
+        x = df[x_key].values; y = df[y_key].values; density = []
+        if len(x) > 0 and len(y) > 0:
+            try:
+                bins = 25; H, xedges, yedges = np.histogram2d(x, y, bins=bins)
+                ix = np.searchsorted(xedges, x, side='right') - 1; iy = np.searchsorted(yedges, y, side='right') - 1
+                ix = np.clip(ix, 0, bins - 1); iy = np.clip(iy, 0, bins - 1)
+                density = H[ix, iy]
+            except Exception as e: print(f"Density/Hist error: {e}"); density = []
 
-    scatter_fig = go.Figure(data=go.Scattergl(
-        x=x, y=y, mode='markers',
-        marker=dict(color=density if len(density) > 0 else 'lightblue', colorscale='Viridis', opacity=0.6, size=4,
-                    showscale=True if len(density) > 0 else False, colorbar=dict(title="Density") if len(density) > 0 else None)
-    ))
+        fig = go.Figure(data=go.Scattergl(
+            x=x, y=y, mode='markers',
+            marker=dict(color=density if len(density) > 0 else 'lightblue', colorscale='Viridis', opacity=0.6, size=4,
+                        showscale=True if len(density) > 0 else False, colorbar=dict(title="Density") if len(density) > 0 else None)
+        ))
 
-    x_axis_config = {'title': x_key, 'type': x_scale, 'autorange': False}
-    y_axis_config = {'title': y_key, 'type': y_scale, 'autorange': False}
+        x_axis_config = {'title': x_key, 'type': x_scale, 'autorange': False}
+        y_axis_config = {'title': y_key, 'type': y_scale, 'autorange': False}
 
-    if x_min_user is not None and x_max_user is not None:
-        if x_max_user > x_min_user:
+        if x_min is not None and x_max is not None and x_max > x_min:
             if x_scale == 'log':
-                if x_min_user > 0 and x_max_user > 0: x_axis_config['range'] = [math.log10(x_min_user), math.log10(x_max_user)]
-                else: print(f"Warning: Log X-range values ({x_min_user}, {x_max_user}) must be > 0.")
-            else: x_axis_config['range'] = [x_min_user, x_max_user]
-        else: print(f"Warning: X-max ({x_max_user}) must be > X-min ({x_min_user}).")
-    if y_min_user is not None and y_max_user is not None:
-        if y_max_user > y_min_user:
+                if x_min > 0 and x_max > 0: x_axis_config['range'] = [math.log10(x_min), math.log10(x_max)]
+            else: x_axis_config['range'] = [x_min, x_max]
+        
+        if y_min is not None and y_max is not None and y_max > y_min:
             if y_scale == 'log':
-                if y_min_user > 0 and y_max_user > 0: y_axis_config['range'] = [math.log10(y_min_user), math.log10(y_max_user)]
-                else: print(f"Warning: Log Y-range values ({y_min_user}, {y_max_user}) must be > 0.")
-            else: y_axis_config['range'] = [y_min_user, y_max_user]
-        else: print(f"Warning: Y-max ({y_max_user}) must be > Y-min ({y_min_user}).")
+                if y_min > 0 and y_max > 0: y_axis_config['range'] = [math.log10(y_min), math.log10(y_max)]
+            else: y_axis_config['range'] = [y_min, y_max]
 
-    scatter_fig.update_layout(title='Density Scatter Plot', xaxis=x_axis_config, yaxis=y_axis_config,
-                              dragmode='select', uirevision=x_key + y_key + x_scale + y_scale + str(x_min_user) + str(x_max_user) + str(y_min_user) + str(y_max_user))
+        fig.update_layout(xaxis=x_axis_config, yaxis=y_axis_config,
+                                  dragmode='select', uirevision=f'scatter{plot_num}')
 
-    if box_data and box_data.get("x0") and box_data["x0"][0] != 0.0:
-        try:
-            scatter_fig.add_shape( type="rect", x0=box_data["x0"][0], y0=box_data["y0"][0],
-                x1=box_data["x1"][0], y1=box_data["y1"][0], line=dict(color="RoyalBlue", width=2, dash="dot"),
-                fillcolor="LightSkyBlue", opacity=0.3, layer="below" )
-        except Exception as e: print(f"Error adding shape: {e}")
+        # --- Draw Gate Lines ---
+        if gates:
+            converted_regs = instrument.get_fpga_registers_converted()
+            for gate_key, raw_val in gates.items():
+                param_match = re.match(r'(low|high)_(intensity|width|area)_thresh\[(\d)\]', gate_key)
+                if not param_match: continue
+                
+                limit_type, param_type, ch_str = param_match.groups()
+                ch = int(ch_str)
 
-    return scatter_fig, signal_fig, update_text, timers
+                # Find the corresponding display key (e.g., 'cur_droplet_intensity_v[0]')
+                display_key_suffix = "_v" if param_type == 'intensity' else "_ms" if param_type == 'width' else "_vms"
+                display_key = f"cur_droplet_{param_type}{display_key_suffix}[{ch}]"
+
+                # Get the converted value from the instrument's state
+                converted_val, unit = converted_regs.get(gate_key, (None, None))
+                if converted_val is None: continue
+
+                line_style = dict(color="cyan", width=1, dash="dot")
+
+                # If the plot's X-axis matches the gated parameter, draw vertical lines
+                if x_key == display_key:
+                    fig.add_vline(x=converted_val, line=line_style)
+
+                # If the plot's Y-axis matches the gated parameter, draw horizontal lines
+                if y_key == display_key:
+                    fig.add_hline(y=converted_val, line=line_style)
+        
+        return fig
+
+    # --- Generate both scatter plots ---
+    scatter_fig_1 = make_scatter(1, x_key_1, y_key_1, x_scale_1, y_scale_1, x_min_1, x_max_1, y_min_1, y_max_1, sort_gates)
+    scatter_fig_2 = make_scatter(2, x_key_2, y_key_2, x_scale_2, y_scale_2, x_min_2, x_max_2, y_min_2, y_max_2, sort_gates)
+
+    return scatter_fig_1, scatter_fig_2, signal_fig, update_text, timers
 
 
 @app.callback(
@@ -554,7 +619,6 @@ def update_detection_threshold(threshold_volts, channel):
         if instrument:
             instrument.set_detection_threshold(thresh=threshold_volts, ch=channel)
     return "" # No actual class change needed
-
 
 @app.callback(
     Output('sort-delay-slider', 'className'), # Dummy output to hang the callback on
@@ -743,22 +807,35 @@ def toggle_sorter(n_clicks, n_detection_clicks, sorter_is_on, detection_is_on):
 
 @app.callback(
     Output('gate-selection-store', 'data'),
-    Input('scatter-plot', 'selectedData'),
+    [Input('scatter-plot-1', 'selectedData'),
+     Input('scatter-plot-2', 'selectedData')],
     State('axis-keys-store', 'data'),
     prevent_initial_call=True
 )
-def store_box_select(selectedData, axis_keys):
+def store_box_select(selectedData1, selectedData2, axis_keys):
+    ctx = dash.callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    selectedData = selectedData1 if triggered_id == 'scatter-plot-1' else selectedData2
+    
     if selectedData and 'range' in selectedData:
         x_range = selectedData['range']['x']
         y_range = selectedData['range']['y']
-        new_box = {"x0": [x_range[0]], "y0": [y_range[0]], "x1": [x_range[1]], "y1": [y_range[1]]}
-        current_sort_keys = [axis_keys['x'], axis_keys['y']]
+
+        if triggered_id == 'scatter-plot-1':
+            current_sort_keys = [axis_keys['x1'], axis_keys['y1']]
+        else: # triggered by scatter-plot-2
+            current_sort_keys = [axis_keys['x2'], axis_keys['y2']]
+
+        # Store coordinates AND the keys they correspond to
+        new_box = {"x0": [x_range[0]], "y0": [y_range[0]], "x1": [x_range[1]], "y1": [y_range[1]],
+                   "x_key": current_sort_keys[0], "y_key": current_sort_keys[1]}
+
         print(f"New selection. Keys={current_sort_keys}. Box={new_box}") # Keep for debugging if needed
         with lock:
             instrument.set_gate_limits(sort_keys=current_sort_keys, limits=new_box)
         return new_box
-    else:
-        raise exceptions.PreventUpdate
+    
+    raise exceptions.PreventUpdate
 
 @app.callback(
     Output('box-select-div', 'children'),
@@ -788,27 +865,40 @@ def display_box_select(box_data):
 
 @app.callback(
         Output('save-status-div', 'children'), 
-        [Input('save-scatter-button', 'n_clicks'), 
-         Input('save-signal-button', 'n_clicks')], 
+        [Input('save-scatter-button', 'n_clicks'),
+         Input('save-signal-button', 'n_clicks'),
+         Input('clear-scatter-button', 'n_clicks')],
         [State('scatter-filename-input', 'value'), 
          State('signal-filename-input', 'value')], 
          prevent_initial_call=True
 )
-def save_data(n_scatter, n_signal, scatter_file, signal_file):
-    ctx = dash.callback_context; button_id = ctx.triggered[0]['prop_id'].split('.')[0]; msg = ""
+def data_actions(n_scatter, n_signal, n_clear, scatter_file, signal_file):
+    ctx = dash.callback_context
+    if not ctx.triggered or not ctx.triggered[0]['value']:
+        raise exceptions.PreventUpdate
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    msg = ""
+    color = "info"
     with lock:
         try:
             if button_id == 'save-scatter-button':
                 if not scatter_file.endswith(".csv"): scatter_file += ".csv"
                 instrument.save_droplet_data_log(filename=scatter_file)
                 msg = f"Scatter data saved to {scatter_file}"
+                color = "success"
             elif button_id == 'save-signal-button':
                 if not signal_file.endswith(".csv"): signal_file += ".csv"
                 instrument.save_adc_log(filename=signal_file)
                 msg = f"Signal data saved to {signal_file}"
-        except Exception as e: msg = f"Error saving data: {e}"
+            elif button_id == 'clear-scatter-button':
+                instrument.clear_droplet_data()
+                msg = "Scatter plot data cleared."
+                color = "warning"
+        except Exception as e:
+            msg = f"Error performing action: {e}"
+            color = "danger"
     print(msg)
-    return msg
+    return dbc.Alert(msg, color=color, dismissable=True, duration=4000)
 
 @app.callback(
     [Output('droplet-count-div', 'children'),

@@ -1,0 +1,54 @@
+/*
+Custom CSS for Piccolo UI
+*/
+
+/* --- Scrollbar Styling --- */
+
+/* For Webkit-based browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000; /* Black background for the track */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #444444; /* Dark grey for the scrollbar thumb */
+  border-radius: 6px;
+  border: 2px solid #000000; /* Creates a padding effect */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #666666; /* Lighter grey on hover */
+}
+
+/* --- Input Box Styling --- */
+input[type="text"], input[type="number"] {
+  background-color: #222222 !important; /* Very dark grey background */
+  color: #ffffff !important;           /* White text */
+}
+
+/* --- Dropdown Styling --- */
+
+/* The main dropdown control bar */
+.Select-control {
+  background-color: #222222 !important;
+  border: 1px solid #444 !important;
+}
+
+/* The text of the selected value */
+.Select-value-label {
+  color: #ffffff !important;
+}
+
+/* The dropdown menu that appears */
+.Select-menu-outer {
+  background-color: #222222 !important;
+}
+
+/* An individual option in the dropdown when hovered or focused */
+.Select-option.is-focused {
+  background-color: #444444 !important;
+}

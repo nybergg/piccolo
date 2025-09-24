@@ -373,6 +373,13 @@ class Instrument:
         self.droplet_data.to_csv(filename, index=False)
         return None
     
+    def clear_droplet_data(self):
+        """Clears the internal droplet data buffer."""
+        if self.verbose:
+            print("[Instrument] Clearing droplet data buffer.")
+        self.droplet_data = pd.DataFrame()
+        return None
+
     # In  Instrument or DummyInstrument class
     def save_adc_log(self, filename="adc_log.csv"):
         # Assuming adc1_data and adc2 _data have 4096 points
@@ -389,8 +396,9 @@ class Instrument:
     def set_gate_limits(self, sort_keys, limits):
         if self.verbose:
             print(f"[Instrument] Recieved gate limits to set: {limits}")
-
-        sort_gates = {}
+        
+        # Ensure sort_gates exists, and update it instead of replacing it.
+        if not hasattr(self, 'sort_gates'): self.sort_gates = {}
 
         for i, key in enumerate(sort_keys):
             # Parse channel index
@@ -423,21 +431,24 @@ class Instrument:
             else:
                 raise ValueError(f"Unrecognized key: {key}")
 
-            sort_gates[f"low_{param}_thresh[{ch}]"] = low_val
-            sort_gates[f"high_{param}_thresh[{ch}]"] = high_val
+            self.sort_gates[f"low_{param}_thresh[{ch}]"] = low_val
+            self.sort_gates[f"high_{param}_thresh[{ch}]"] = high_val
 
         if self.verbose:
-            print(f"[Instrument] Setting sort gates: {sort_gates}")
+            print(f"[Instrument] Setting cumulative sort gates: {self.sort_gates}")
         
         # Write sort_gates to FPGA memory
-        for var, val in sort_gates.items():
+        for var, val in self.sort_gates.items():
             self.set_memory_variable(var, int(val))
-
-        # Save for inspection
-        self.sort_gates = sort_gates
         
         return self.sort_gates
     
+    def get_sort_gates(self):
+        """Returns the currently configured sort gates."""
+        if hasattr(self, 'sort_gates'):
+            return self.sort_gates
+        return {}
+
 
     def set_detection_threshold(self, thresh, ch):
         
