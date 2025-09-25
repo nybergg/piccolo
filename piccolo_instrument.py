@@ -346,6 +346,7 @@ class Instrument:
 
     def set_laser_on_state(self, name, state):
         """Set the on/off state of a laser, with a low power default."""
+        print(f"[Instrument] Setting laser '{name}' on state to {state}.")
         if self.laser_box:
             if state:
                 # Turn on and set to a safe, low power
@@ -353,7 +354,7 @@ class Instrument:
                 self.laser_box.set_active_state(name, True)
                 self.laser_box.set_power(name, 4) # 4mW
             else:
-                # Set to a safe, low power when turning on
+                # When turning off, set power to 0 first, then deactivate.
                 self.laser_box.set_power(name, 0)
                 self.laser_box.set_active_state(name, False)
                 self.laser_box.set_on_state(name, False)

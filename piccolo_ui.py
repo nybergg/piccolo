@@ -254,22 +254,30 @@ app.layout = dbc.Container([
                         ]),
                         html.Hr(),
                         # Lasers
-                        html.H6("Laser Controls", className="mt-3"),
                         dbc.Row([
-                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '405'}, options=[{'label': '405 nm', 'value': '405'}], value=[]), width=3),
-                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '405'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col(html.H6("Laser Controls", className="mt-3"), width='auto'),
+                            dbc.Col(html.Div(id='laser-status-indicator', className='status-indicator-off'), width='auto', align='center')
+                        ], align='center'),
+                        dbc.Row([
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '405'}, options=[{'label': '405 nm', 'value': '405'}], value=[]), width=2),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '405'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=False), width=9)
                         ], className="mb-2"),
                         dbc.Row([
-                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '488'}, options=[{'label': '488 nm', 'value': '488'}], value=[]), width=3),
-                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '488'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '488'}, options=[{'label': '488 nm', 'value': '488'}], value=[]), width=2),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '488'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=False), width=9)
                         ], className="mb-2"),
                         dbc.Row([
-                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '561'}, options=[{'label': '561 nm', 'value': '561'}], value=[]), width=3),
-                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '561'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '561'}, options=[{'label': '561 nm', 'value': '561'}], value=[]), width=2),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '561'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=False), width=9)
                         ], className="mb-2"),
                         dbc.Row([
-                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '633'}, options=[{'label': '633 nm', 'value': '633'}], value=[]), width=3),
-                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '633'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                            dbc.Col(width=1), # Spacer column
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '633'}, options=[{'label': '633 nm', 'value': '633'}], value=[]), width=2),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '633'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=False), width=9)
                         ], className="mb-2"),
                         html.Hr(),
                         # Detection Threshold
@@ -572,39 +580,53 @@ def update_graphs(n, x_key_1, y_key_1, x_scale_1, y_scale_1, x_min_1, x_max_1, y
 
 
 @app.callback(
-    Output({'type': 'laser-power-slider', 'index': dash.MATCH}, 'disabled'),
-    Output({'type': 'laser-power-slider', 'index': dash.MATCH}, 'value'),
-    Input({'type': 'laser-on-checklist', 'index': dash.MATCH}, 'value'),
-    State({'type': 'laser-power-slider', 'index': dash.MATCH}, 'id'),
+    Output({'type': 'laser-on-checklist', 'index': dash.MATCH}, 'id'), # Dummy output
+    [Input({'type': 'laser-on-checklist', 'index': dash.MATCH}, 'value'),
+     Input({'type': 'laser-power-slider', 'index': dash.MATCH}, 'value')],
+    [State({'type': 'laser-power-slider', 'index': dash.MATCH}, 'id')],
     prevent_initial_call=True
 )
-def toggle_laser_on_off(checklist_value, slider_id):
+def update_laser_state(checklist_value, power_mw, slider_id):
+    """
+    This single callback handles all laser state changes.
+    - The checklist turns the laser emission on or off.
+    - The slider sets the power level.
+    - If the laser is on, changing the slider value updates the power immediately.
+    - If the laser is off, changing the slider value does nothing to the hardware.
+    - Toggling the checklist on will apply the slider's current power value.
+    """
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise exceptions.PreventUpdate
+
     laser_name = str(slider_id['index'])
-    is_on = bool(checklist_value)
-    
+    is_checked = bool(checklist_value)
+
     with lock:
         if instrument:
-            instrument.set_laser_on_state(laser_name, is_on)
+            # The checklist is the master control for emission.
+            instrument.set_laser_on_state(laser_name, is_checked)
 
-    if is_on:
-        # Enable slider, set power to 5mW
-        return False, 5
-    else:
-        # Disable slider, set power to 0
-        return True, 0
+            # If the laser is supposed to be on, set its power.
+            # If it's being turned off, set_laser_on_state(False) handles setting power to 0.
+            if is_checked:
+                instrument.set_laser_power(laser_name, power_mw)
+
+    return slider_id  # No actual change to the dummy output
 
 @app.callback(
-    Output({'type': 'laser-on-checklist', 'index': dash.MATCH}, 'id'), # Dummy output
-    Input({'type': 'laser-power-slider', 'index': dash.MATCH}, 'value'),
-    State({'type': 'laser-power-slider', 'index': dash.MATCH}, 'id'),
-    prevent_initial_call=True
+    Output('laser-status-indicator', 'className'),
+    Input({'type': 'laser-on-checklist', 'index': dash.ALL}, 'value')
 )
-def update_laser_power(power_mw, slider_id):
-    laser_name = str(slider_id['index'])
-    with lock:
-        if instrument:
-            instrument.set_laser_power(laser_name, power_mw)
-    return slider_id # No actual change
+def update_laser_status_indicator(checklist_values):
+    """
+    Updates the blinking status indicator for the laser panel.
+    Blinks red if any laser is checked on.
+    """
+    # checklist_values is a list of lists, e.g., [[], ['488'], [], []]
+    # any() on this list of lists is True if any sublist is not empty.
+    any_laser_on = any(checklist_values)
+    return 'status-indicator-on' if any_laser_on else 'status-indicator-off'
 
 
 @app.callback(
@@ -1127,17 +1149,18 @@ if __name__ == '__main__':
     print("Werkzeug (HTTP Server) logging is set to ERROR level.")
 
     if camera_available:
-        # Check if laser is available and handle it
-        if instrument and instrument.laser_box:
-            print("Laser control is available.")
-        else:
-            print("Laser control is DISABLED.")
         print("Starting camera thread...")
         camera_running = True
         cam_thread = threading.Thread(target=camera_thread_func, daemon=True)
         cam_thread.start()
     else:
         print("Camera functionality disabled.")
+    
+    # Check if laser is available and handle it
+    if instrument and instrument.laser_box:
+        print("Laser control is available.")
+    else:
+        print("Laser control is DISABLED.")
 
     print(f"Starting Dash server on {SERVER_URL} ... Press Ctrl+C to stop.")
     Timer(1.5, open_browser).start()

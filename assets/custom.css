@@ -2,6 +2,12 @@
 Custom CSS for Piccolo UI
 */
 
+/* Custom CSS for Piccolo UI */
+.rc-slider-tooltip {
+    z-index: 1056; /* Ensure tooltip is above other elements */
+}
+
+
 /* --- Scrollbar Styling --- */
 
 /* For Webkit-based browsers (Chrome, Safari, Edge) */
@@ -51,4 +57,51 @@ input[type="text"], input[type="number"] {
 /* An individual option in the dropdown when hovered or focused */
 .Select-option.is-focused {
   background-color: #444444 !important;
+}
+
+
+/* --- Custom Laser Slider Styles --- */
+
+/* Keep the background of the disabled slider track dark, like the rest of the theme */
+.rc-slider-disabled {
+    background-color: #222 !important; /* Overrides the default light grey */
+}
+
+/* Style the filled part of the track for a disabled slider to be a muted grey */
+.rc-slider-disabled .rc-slider-track {
+    background-color: #555 !important;
+}
+
+/* Style the handle of a disabled slider to be a muted grey */
+.rc-slider-disabled .rc-slider-handle {
+    background-color: #555 !important;
+    border-color: #777 !important;
+}
+
+/* Laser Status Indicator */
+.status-indicator-off {
+    height: 12px;
+    width: 12px;
+    background-color: #555; /* Dark grey for off state */
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.status-indicator-on {
+    height: 12px;
+    width: 12px;
+    background-color: #ff3d36; /* Red for on state */
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 10px;
+    vertical-align: middle;
+    animation: blink-animation 1s infinite;
+}
+
+@keyframes blink-animation {
+    0% { opacity: 1; }
+    50% { opacity: 0.2; }
+    100% { opacity: 1; }
 }
