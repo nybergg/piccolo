@@ -17,6 +17,7 @@ from piccolo_clients import (
     MemoryCommandClient,
     ControlCommandClient
 )
+from cobalt_skyra import LaserBox
 
 class Instrument:
     def __init__(self, 
@@ -46,6 +47,9 @@ class Instrument:
 
         # Get calibration values
         self.get_rp_calibration()
+
+        # Setup laser
+        self.laser_box = self.setup_laser()
         
         # Setup clients
         self.setup_clients()
@@ -202,6 +206,36 @@ class Instrument:
 
         return None
 
+    def setup_laser(self):
+        """Initialize the laser box."""
+        try:
+            with open("laser_config.json", "r") as f:
+                config = json.load(f)
+
+            name2num_and_max_power_mw = {
+                name: (details["num"], details["max_power_mw"])
+                for name, details in config["lasers"].items()
+            }
+
+            laser_box = LaserBox(
+                which_port=config["port"],
+                serial_number=config["serial_number"],
+                name2num_and_max_power_mw=name2num_and_max_power_mw,
+                verbose=self.verbose
+            )
+            # Ensure all lasers are off on startup
+            for name in laser_box.names:
+                laser_box.set_power(name, 0)
+                laser_box.set_active_state(name, False)
+                laser_box.set_on_state(name, False)
+            
+            print("[Instrument] LaserBox initialized successfully.")
+            return laser_box
+        except FileNotFoundError:
+            print("[Instrument] laser_config.json not found. Laser control disabled.")
+        except Exception as e:
+            print(f"[Instrument] Failed to initialize LaserBox: {e}")
+        return None
 
     ################ Red Pitaya Client Methods ################
 
@@ -309,6 +343,25 @@ class Instrument:
         self.set_memory_variable("detection_enable", value_to_set)
         status = "enabled" if enable else "disabled"
         print(f"[Instrument] Droplet detection has been {status}.")
+
+    def set_laser_on_state(self, name, state):
+        """Set the on/off state of a laser, with a low power default."""
+        if self.laser_box:
+            if state:
+                # Turn on and set to a safe, low power
+                self.laser_box.set_on_state(name, True)
+                self.laser_box.set_active_state(name, True)
+                self.laser_box.set_power(name, 4) # 4mW
+            else:
+                # Set to a safe, low power when turning on
+                self.laser_box.set_power(name, 0)
+                self.laser_box.set_active_state(name, False)
+                self.laser_box.set_on_state(name, False)
+
+    def set_laser_power(self, name, power_mw):
+        """Set the power of a laser."""
+        if self.laser_box:
+            self.laser_box.set_power(name, power_mw)
 
     def stop_servers(self):
         """Send kill command to Red Pitaya."""
@@ -484,6 +537,17 @@ class Instrument:
         raw_value = (volt_value * adc_max / vp) / gain + offset
         
         return int(raw_value)
+    
+    def stop(self):
+        """Stops all clients and the remote server process."""
+        print("[Instrument] Initiating shutdown...")
+        self.stop_clients()
+        self.stop_servers()
+        if self.laser_box:
+            self.laser_box.shutdown()
+            self.laser_box.close()
+        print("[Instrument] Shutdown complete.")
+
 
 if __name__ == "__main__":
     instrument = Instrument(

@@ -22,7 +22,7 @@ class LaserBox:
         try:
             self.port = serial.Serial(
                 port=which_port, baudrate=115200, timeout=5)
-        except serial.serialutil.SerialException:
+        except serial.SerialException:
             raise IOError('%s: No connection on port %s'%(name, which_port))
         if self.verbose: print(" done.")
         # check laser box is connected using serial number:
@@ -149,6 +149,15 @@ class LaserBox:
             print("%s(%s): -> done setting active state."%(self.name, name))
         return None
 
+    def shutdown(self):
+        if self.verbose: print("%s: shutting down..."%self.name)
+        for name in self.names:
+            self.set_power(name, 0)
+            self.set_active_state(name, False)
+            self.set_on_state(name, False)
+        if self.verbose: print("%s: shut down."%self.name)
+        return None
+    
     def close(self):
         if self.verbose: print("%s: closing..."%self.name)
         self.port.close()

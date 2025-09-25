@@ -254,11 +254,23 @@ app.layout = dbc.Container([
                         ]),
                         html.Hr(),
                         # Lasers
-                        html.H6("Laser Controls"),
-                        html.Label("488nm Laser Power:"),
-                        dcc.Slider(id='laser0-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
-                        html.Label("520nm Laser Power:"),
-                        dcc.Slider(id='laser1-slider', min=0, max=25, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+                        html.H6("Laser Controls", className="mt-3"),
+                        dbc.Row([
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '405'}, options=[{'label': '405 nm', 'value': '405'}], value=[]), width=3),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '405'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                        ], className="mb-2"),
+                        dbc.Row([
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '488'}, options=[{'label': '488 nm', 'value': '488'}], value=[]), width=3),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '488'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                        ], className="mb-2"),
+                        dbc.Row([
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '561'}, options=[{'label': '561 nm', 'value': '561'}], value=[]), width=3),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '561'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                        ], className="mb-2"),
+                        dbc.Row([
+                            dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': '633'}, options=[{'label': '633 nm', 'value': '633'}], value=[]), width=3),
+                            dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': '633'}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=True), width=9)
+                        ], className="mb-2"),
                         html.Hr(),
                         # Detection Threshold
                         html.H6("Droplet Detection Settings"),
@@ -560,18 +572,40 @@ def update_graphs(n, x_key_1, y_key_1, x_scale_1, y_scale_1, x_min_1, x_max_1, y
 
 
 @app.callback(
-        Output('laser0-slider', 'value'), 
-        [Input('laser0-slider', 'value'),
-         Input('laser1-slider', 'value')],
-         prevent_initial_call=True
+    Output({'type': 'laser-power-slider', 'index': dash.MATCH}, 'disabled'),
+    Output({'type': 'laser-power-slider', 'index': dash.MATCH}, 'value'),
+    Input({'type': 'laser-on-checklist', 'index': dash.MATCH}, 'value'),
+    State({'type': 'laser-power-slider', 'index': dash.MATCH}, 'id'),
+    prevent_initial_call=True
 )
-def update_sliders(g0, g1):
-    ctx = dash.callback_context; trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+def toggle_laser_on_off(checklist_value, slider_id):
+    laser_name = str(slider_id['index'])
+    is_on = bool(checklist_value)
+    
     with lock:
         if instrument:
-            if trigger_id == 'laser0-slider': instrument.set_sipm_gain(0, g0)
-            elif trigger_id == 'laser1-slider': instrument.set_sipm_gain(1, g1)
-    return g0
+            instrument.set_laser_on_state(laser_name, is_on)
+
+    if is_on:
+        # Enable slider, set power to 5mW
+        return False, 5
+    else:
+        # Disable slider, set power to 0
+        return True, 0
+
+@app.callback(
+    Output({'type': 'laser-on-checklist', 'index': dash.MATCH}, 'id'), # Dummy output
+    Input({'type': 'laser-power-slider', 'index': dash.MATCH}, 'value'),
+    State({'type': 'laser-power-slider', 'index': dash.MATCH}, 'id'),
+    prevent_initial_call=True
+)
+def update_laser_power(power_mw, slider_id):
+    laser_name = str(slider_id['index'])
+    with lock:
+        if instrument:
+            instrument.set_laser_power(laser_name, power_mw)
+    return slider_id # No actual change
+
 
 @app.callback(
     Output('fpga-set-status', 'children', allow_duplicate=True), # Re-use the status message div
@@ -1093,6 +1127,11 @@ if __name__ == '__main__':
     print("Werkzeug (HTTP Server) logging is set to ERROR level.")
 
     if camera_available:
+        # Check if laser is available and handle it
+        if instrument and instrument.laser_box:
+            print("Laser control is available.")
+        else:
+            print("Laser control is DISABLED.")
         print("Starting camera thread...")
         camera_running = True
         cam_thread = threading.Thread(target=camera_thread_func, daemon=True)

@@ -525,23 +525,6 @@ class PiccoloRP:
         return None
     
 
-    ################ SiPM Gain Methods #############
-
-    def set_sipm_gain(self, gain_id, voltage):
-        # Initialize the interface
-        rp.rp_Init()
-
-        # Reset analog pins
-        rp.rp_ApinReset()
-
-        #! METHOD 2: Configure just slow Analog outputs
-        rp.rp_AOpinSetValue(gain_id, voltage)
-        print (f"Set voltage on AO[{gain_id}] to {voltage} V")
-
-        # Release resources
-        rp.rp_Release()
-    
-
     ################ Server methods ################
 
     def _control_server(self, client):

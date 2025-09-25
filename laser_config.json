@@ -1,0 +1,10 @@
+{
+    "port": "COM4",
+    "serial_number": "28288",
+    "lasers": {
+        "405": {"num": "4", "max_power_mw": 50},
+        "488": {"num": "3", "max_power_mw": 50},
+        "561": {"num": "1", "max_power_mw": 50},
+        "633": {"num": "2", "max_power_mw": 50}
+    }
+}
