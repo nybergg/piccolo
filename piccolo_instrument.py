@@ -157,6 +157,18 @@ class Instrument:
         # Debug
         if self.verbose:
             print(f"\nFiles transferred to Red Pitaya.")
+   
+        # Load the bitstream onto the FPGA
+        bitstream_path = "/root/piccolo.bit.bin"
+        load_cmd = f"sudo cat {bitstream_path} > /dev/xdevcfg"
+        _, stdout, stderr = ssh.exec_command(load_cmd)
+        exit_status = stdout.channel.recv_exit_status()
+        if exit_status == 0:
+            if self.verbose:
+                print(f"Successfully loaded bitstream from {bitstream_path}")
+        else:
+            print(f"ERROR: Failed to load bitstream. Exit code: {exit_status}. Stderr: {stderr.read().decode()}")
+
         
         if not self.debug_flag:
             # Construct command for background piccolo_rp.py process with logging
