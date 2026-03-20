@@ -8,9 +8,12 @@ launch_rp: true         # true = deploy code and load bitstream on startup (igno
 camera_enabled: false   # true = start camera thread (requires pypylon + OpenCV)
 
 # Red Pitaya connection
-# Credentials are loaded from config/rp_login.json (not stored here for security).
+# Credentials are loaded via --rp-login (not stored here for security).
 rp_dir: "piccolo_testing"
 rp_script: "piccolo_rp.py"
+
+# Laser
+laser_config_path: "../config/laser_config.json"
 
 # Data
 buffer_size: 1000       # Max droplet data rows kept in memory

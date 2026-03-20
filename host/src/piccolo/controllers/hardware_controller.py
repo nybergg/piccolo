@@ -30,7 +30,7 @@ class HardwareController(InstrumentController):
     def __init__(self,
                  config=None,
                  local_script="piccolo_rp.py",
-                 local_dir="firmware/arm",
+                 local_dir="../firmware/arm",
                  script_args=None,
                  rp_dir="piccolo_testing",
                  verbose=False,
@@ -56,6 +56,7 @@ class HardwareController(InstrumentController):
         self._load_calibration(config)
 
         # Setup laser
+        self._laser_config_path = config.laser_config_path if config else None
         self.laser_box = self._setup_laser()
 
         # Setup clients
@@ -153,7 +154,7 @@ class HardwareController(InstrumentController):
                         print(f"Local file {local_path} transferred to Red Pitaya {remote_path}")
 
             # Also transfer the shared mmap config
-            mmap_path = os.path.join("config", "piccolo_mmap.json")
+            mmap_path = os.path.join("..", "config", "piccolo_mmap.json")
             if os.path.exists(mmap_path):
                 scp.put(mmap_path, posixpath.join(self.rp_dir, "piccolo_mmap.json"))
                 if self.very_verbose:
@@ -206,8 +207,9 @@ class HardwareController(InstrumentController):
 
     def _setup_laser(self):
         """Initialize the laser box."""
+        laser_path = self._laser_config_path or "../config/laser_config.json"
         try:
-            with open("config/laser_config.json", "r") as f:
+            with open(laser_path, "r") as f:
                 config = json.load(f)
 
             name2num_and_max_power_mw = {
@@ -229,7 +231,7 @@ class HardwareController(InstrumentController):
             print("[HardwareController] LaserBox initialized successfully.")
             return laser_box
         except FileNotFoundError:
-            print("[HardwareController] laser_config.json not found. Laser control disabled.")
+            print(f"[HardwareController] {laser_path} not found. Laser control disabled.")
         except Exception as e:
             print(f"[HardwareController] Failed to initialize LaserBox: {e}")
         return None

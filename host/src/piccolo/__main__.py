@@ -25,8 +25,8 @@ def parse_args():
         description="Piccolo FADS instrument control system",
     )
     parser.add_argument(
-        "--config", default="config/default.yaml",
-        help="Path to YAML config file (default: config/default.yaml)",
+        "--config", default="../config/default.yaml",
+        help="Path to YAML config file (default: ../config/default.yaml)",
     )
     parser.add_argument(
         "--rp-login", default=None,
