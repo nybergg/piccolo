@@ -62,11 +62,11 @@ pytest
 The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connected via TCP. On the host side, the code is layered so that the UI never talks to hardware directly — it goes through a controller, which delegates to drivers and clients.
 
 ```
-                                                        SiPM Detectors
- Host PC                              Red Pitaya        (fluorescence)
+                                                                    SiPM Detectors
+ Host PC                              Red Pitaya                    (fluorescence)
 ┌─────────────────────────────┐      ┌──────────────────────────┐
 │                             │      │                          │  ┌──────┐
-│  ┌───────────────────────┐  │      │  ┌────────────────────┐  │  │SiPM 0│
+│  ┌───────────────────────┐  │      │  ┌────────────────────┐◄─┼──│SiPM 0│
 │  │  UI                   │  │      │  │  FPGA              │◄─┼──┤SiPM 1│
 │  │  layout + callbacks   │  │      │  │  4-ch ADC          │◄─┼──┤SiPM 2│
 │  └──────────┬────────────┘  │      │  │  - droplet detect  │◄─┼──┤SiPM 3│
@@ -159,9 +159,9 @@ The Red Pitaya hosts four TCP servers:
 | Component | Model | Role |
 |---|---|---|
 | FPGA board | Red Pitaya STEMlab (4-input variant) | ADC acquisition, real-time droplet detection and sort triggering |
-| Laser box | Cobalt Skyra | Multi-line laser source (405, 488, 561, 633 nm) |
+| Excitation Lasers | Cobalt Skyra | Multi-line laser source (405, 488, 561, 633 nm) |
+| Emission Detectors | SiPM photodetectors (x4) | Fluorescence signal detection, one per channel |
 | Camera | Basler (USB3, Mono12p, 2048x2048) | Microscope imaging of the microfluidic chip |
-| Detectors | SiPM photodetectors (x4) | Fluorescence signal detection, one per channel |
 | Sorter | Actuator (driven by FPGA digital output) | Deflects droplets matching gate criteria |
 | Microfluidic chip | Custom | Generates and routes droplets through the detection/sort region |
 
