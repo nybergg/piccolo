@@ -177,7 +177,7 @@ class HardwareController(InstrumentController):
         bitstream_path = posixpath.join(self.rp_dir, "piccolo.bit.bin")
 
         print("[HardwareController] Resetting FPGA overlay...")
-        _, stdout, stderr = ssh.exec_command("overlay.sh v0.49", timeout=30)
+        _, stdout, stderr = ssh.exec_command("/opt/redpitaya/sbin/overlay.sh v0.49", timeout=30)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status != 0:
             print(f"WARNING: overlay.sh v0.49 returned exit code {exit_status}. Stderr: {stderr.read().decode()}")
