@@ -91,6 +91,7 @@ def main():
     else:
         print("Starting with REAL HARDWARE.")
         controller = HardwareController(
+            config=config,
             rp_dir=config.rp_dir,
             verbose=verbose,
         )

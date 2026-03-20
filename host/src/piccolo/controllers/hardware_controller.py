@@ -28,6 +28,7 @@ from piccolo.drivers.laser import LaserBox
 
 class HardwareController(InstrumentController):
     def __init__(self,
+                 config=None,
                  local_script="piccolo_rp.py",
                  local_dir="firmware/arm",
                  script_args=None,
@@ -48,11 +49,11 @@ class HardwareController(InstrumentController):
         self.very_verbose = very_verbose
         self.debug_flag = debug_flag
 
-        # Get rp login information
-        self._load_rp_login()
+        # Get rp login information from config
+        self._load_rp_login(config)
 
-        # Get calibration values
-        self._load_calibration()
+        # Get calibration values from config
+        self._load_calibration(config)
 
         # Setup laser
         self.laser_box = self._setup_laser()
@@ -94,14 +95,21 @@ class HardwareController(InstrumentController):
 
     ################ Red Pitaya Setup ################
 
-    def _load_rp_login(self):
-        """Load Red Pitaya login credentials from JSON."""
-        with open("config/rp_login_4CH.json", "r") as f:
-            rp_login_json = json.load(f)
+    def _load_rp_login(self, config):
+        """Load Red Pitaya login credentials from config."""
+        if config is None:
+            raise ValueError(
+                "HardwareController requires a PiccoloConfig with RP credentials. "
+                "Use --rp-login to provide a login JSON file."
+            )
+        self.ip = config.rp_ip
+        self.username = config.rp_username
+        self.password = config.rp_password
 
-        self.ip = rp_login_json["ip"]
-        self.username = rp_login_json["username"]
-        self.password = rp_login_json["password"]
+        if not self.ip:
+            raise ValueError(
+                "Red Pitaya IP not set. Provide --rp-login or set rp_ip in config."
+            )
 
         if self.verbose:
             print("\nRed Pitaya login information loaded successfully")
@@ -110,14 +118,17 @@ class HardwareController(InstrumentController):
             print(f"Username: {self.username}")
             print(f"Password: {self.password}")
 
-    def _load_calibration(self):
-        """Load ADC calibration values."""
-        self.calibration_values = {
-            "CH1": [-10, 1.0],
-            "CH2": [-10, 1.0],
-            "CH3": [-10, 1.0],
-            "CH4": [-10, 1.0],
-        }
+    def _load_calibration(self, config):
+        """Load ADC calibration values from config."""
+        if config and config.calibration:
+            self.calibration_values = config.calibration
+        else:
+            self.calibration_values = {
+                "CH1": [-10, 1.0],
+                "CH2": [-10, 1.0],
+                "CH3": [-10, 1.0],
+                "CH4": [-10, 1.0],
+            }
         if self.verbose:
             print("\nRed Pitaya calibration values loaded successfully")
 
