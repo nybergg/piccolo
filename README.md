@@ -65,22 +65,22 @@ The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connect
  Host PC                              Red Pitaya
 ┌─────────────────────────────┐      ┌──────────────────────────┐
 │                             │      │                          │
-│  ┌───────────────────────┐  │      │  ARM (piccolo_rp.py)     │
-│  │  UI                   │  │      │  - mmap FPGA registers   │
-│  │  layout + callbacks   │  │      │  - TCP servers (:5001-3) │
-│  └──────────┬────────────┘  │      │         ▲                │
-│             │               │      │         │ mmap /dev/mem  │
-│  ┌──────────▼────────────┐  │      │  ┌──────▼─────────────┐  │
-│  │  Controller           │  │      │  │  FPGA              │  │
-│  │  HardwareController   │  │      │  │  - 4-ch ADC        │  │
-│  │    or                 │  │      │  │  - droplet detect  │  │
-│  │  HardwareSimulator    │  │      │  │  - sort trigger    │  │
-│  └──┬─────────┬──────────┘  │      │  └────────────────────┘  │
-│     │         │             │      │                          │
-│  ┌──▼───┐ ┌──▼───────────┐  │      └────────────▲─────────────┘
+│  ┌───────────────────────┐  │      │  ┌────────────────────┐  │
+│  │  UI                   │  │      │  │  ARM               │  │
+│  │  layout + callbacks   │  │      │  │  piccolo_rp.py     │  │
+│  └──────────┬────────────┘  │      │  │  - mmap registers  │  │
+│             │               │      │  │  - TCP servers     │  │
+│  ┌──────────▼────────────┐  │      │  └────────▲───────────┘  │
+│  │  Controller           │  │      │           │ mmap         │
+│  │  HardwareController   │  │      │  ┌────────▼───────────┐  │
+│  │    or                 │  │      │  │  FPGA              │  │
+│  │  HardwareSimulator    │  │      │  │  - 4-ch ADC        │  │
+│  └──┬─────────┬──────────┘  │      │  │  - droplet detect  │  │
+│     │         │             │      │  │  - sort trigger    │  │
+│  ┌──▼───┐ ┌──▼───────────┐  │      │  └────────────────────┘  │
 │  │Laser │ │TCP Clients   │──┼─── TCP ───────────┘
-│  │Camera│ │(ADC, Memory, │  │
-│  │      │ │ Command)     │  │
+│  │Camera│ │(ADC, Memory, │  │      │                          │
+│  │      │ │ Command)     │  │      └──────────────────────────┘
 │  └──────┘ └──────────────┘  │
 │                             │
 └─────────────────────────────┘
