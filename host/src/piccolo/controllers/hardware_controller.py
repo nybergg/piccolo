@@ -163,16 +163,25 @@ class HardwareController(InstrumentController):
         if self.verbose:
             print(f"\nFiles transferred to Red Pitaya.")
 
-        # Load the bitstream onto the FPGA
+        # Reset FPGA overlay to known state, then load bitstream
         bitstream_path = "/root/piccolo.bit.bin"
-        load_cmd = f"sudo cat {bitstream_path} > /dev/xdevcfg"
-        _, stdout, stderr = ssh.exec_command(load_cmd)
+
+        print("[HardwareController] Resetting FPGA overlay...")
+        _, stdout, stderr = ssh.exec_command("overlay.sh v0.49", timeout=30)
+        exit_status = stdout.channel.recv_exit_status()
+        if exit_status != 0:
+            print(f"WARNING: overlay.sh v0.49 returned exit code {exit_status}. Stderr: {stderr.read().decode()}")
+        elif self.verbose:
+            print("[HardwareController] FPGA overlay reset to v0.49.")
+
+        print("[HardwareController] Loading bitstream...")
+        _, stdout, stderr = ssh.exec_command(f"fpgautil -b {bitstream_path}", timeout=30)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status == 0:
             if self.verbose:
-                print(f"Successfully loaded bitstream from {bitstream_path}")
+                print(f"[HardwareController] Bitstream loaded from {bitstream_path}")
         else:
-            print(f"ERROR: Failed to load bitstream. Exit code: {exit_status}. Stderr: {stderr.read().decode()}")
+            print(f"ERROR: fpgautil failed. Exit code: {exit_status}. Stderr: {stderr.read().decode()}")
 
         if not self.debug_flag:
             args = " ".join(self.script_args)
