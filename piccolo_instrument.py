@@ -55,7 +55,8 @@ class Instrument:
         self.setup_clients()
 
         # Setup droplet data buffer
-        self.buffer_size = 1000  # or set from UI
+        self.data_lock = threading.Lock()
+        self.buffer_size = 1000
         self.droplet_data = pd.DataFrame()
         self.adc1_data = []
         self.adc2_data = []
@@ -282,8 +283,7 @@ class Instrument:
         self.memory_command_client.send_set_command(variable, value)
         print(f"[Instrument] Queued memory variable set: {variable} = {value}")
         # Update internal cache
-        if variable in self.fpga_registers:
-            self.fpga_registers[variable] = value
+        self.fpga_registers[variable] = value
 
     def get_fpga_registers(self):
         """Return the cached dictionary of FPGA register values."""
@@ -331,8 +331,8 @@ class Instrument:
                         display_value = int(1e6 / numeric_value)  # Convert from us period to Hz frequency
                         unit = "Hz"
                     else:
-                        display_value = 0  # Avoid division by zero                    else:
-                        unit = "Hz"
+                        display_value = 0
+                    unit = "Hz"
             except (ValueError, TypeError):
                 # Value is not a number (e.g., binary string from get_var), keep as is
                 display_value = value
@@ -397,9 +397,7 @@ class Instrument:
     def _get_memory_data(self, fpgaoutput):
         if not fpgaoutput:
             return
-        
-        # Update the FPGA register cache with the latest values
-        self.fpga_registers.update(fpgaoutput)
+
         if self.very_verbose:
             print(f"[Instrument] Received memory data: {fpgaoutput}")
 
@@ -423,17 +421,19 @@ class Instrument:
                 row[f"cur_droplet_width[{ch}]"] = raw_width
                 row[f"cur_droplet_width_ms[{ch}]"] = raw_width / 1000.0
 
-            # Append to DataFrame
-            self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame([row])], ignore_index=True)
+            with self.data_lock:
+                # Update the FPGA register cache with the latest values
+                self.fpga_registers.update(fpgaoutput)
 
-            # Maintain rolling size
-            if len(self.droplet_data) > self.buffer_size:
-                self.droplet_data = self.droplet_data.iloc[-self.buffer_size:]
+                # Append to DataFrame
+                self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame([row])], ignore_index=True)
+
+                # Maintain rolling size
+                if len(self.droplet_data) > self.buffer_size:
+                    self.droplet_data = self.droplet_data.iloc[-self.buffer_size:]
 
         except Exception as e:
             print(f"[Instrument] Error parsing droplet data: {e}")
-
-        return self.droplet_data
 
     def save_droplet_data_log(self, filename="droplet_log.csv"):
         self.droplet_data.to_csv(filename, index=False)
@@ -533,7 +533,7 @@ class Instrument:
     
     def convert_raw_to_volts(self, raw_value, ch):
         """Convert raw ADC value to volts using calibration values."""
-        vp = 20.0  # 40V peak-to-peak
+        vp = 20.0  # +/-20V range (40Vpp)
         adc_max = 8192.0  # Max ADC value
         ch_key = f"CH{ch+1}"
         offset, gain = self.calibration_values[ch_key]
@@ -543,7 +543,7 @@ class Instrument:
     
     def convert_volts_to_raw(self, volt_value, ch):
         """Convert volts to raw ADC value using calibration values."""
-        vp = 20.0  # 40V peak-to-peak
+        vp = 20.0  # +/-20V range (40Vpp)
         adc_max = 8192.0  # Max ADC value
         ch_key = f"CH{ch+1}"
         offset, gain = self.calibration_values[ch_key]

@@ -26,12 +26,25 @@ class PiccoloRP:
         self.pending_inputs = {}
         self.client_socket = None
         self.acq_thread_started = False
+        self.adc_lock = threading.Lock()
+        self.shutdown_event = threading.Event()
         
         self._map_memory()
         self._get_mmap_info()
         self._set_defaults()
         
         
+    @staticmethod
+    def _recv_all(sock, size):
+        """Receive exactly 'size' bytes from a socket."""
+        data = b''
+        while len(data) < size:
+            packet = sock.recv(size - len(data))
+            if not packet:
+                return None
+            data += packet
+        return data
+
     ################ Memory mapping methods ################
     def _map_memory(self):
         """Map the memory map region."""
@@ -45,8 +58,8 @@ class PiccoloRP:
             print(f"Memory mapping at address {hex(base_addr)} with size {map_size} bytes...")
 
         # Create a memory mapping of the FADS memory region
-        mem_fd = open("/dev/mem", "r+b")
-        self.mmap = mmap.mmap(mem_fd.fileno(), map_size, mmap.MAP_SHARED,
+        self.mem_fd = open("/dev/mem", "r+b")
+        self.mmap = mmap.mmap(self.mem_fd.fileno(), map_size, mmap.MAP_SHARED,
                                 mmap.PROT_READ | mmap.PROT_WRITE, offset=base_addr)
         
         # Debugging
@@ -367,7 +380,7 @@ class PiccoloRP:
         print(f"Log file {self.csv_filename} initialized.")
 
     def _update_logging(self):
-        timestamp_ms = time.time() * 1e3  # Convert to microseconds.
+        timestamp_ms = time.time() * 1e3  # Convert to milliseconds.
 
         if self.verbose:
             print("\n--------Updating log values--------")
@@ -489,10 +502,11 @@ class PiccoloRP:
                 ch4_data = [ch4_buffer[i] for i in range(sub_N)]
 
                 # Store the data as attribute to class
-                self.ch1_data = ch1_data
-                self.ch2_data = ch2_data
-                self.ch3_data = ch3_data
-                self.ch4_data = ch4_data
+                with self.adc_lock:
+                    self.ch1_data = ch1_data
+                    self.ch2_data = ch2_data
+                    self.ch3_data = ch3_data
+                    self.ch4_data = ch4_data
 
                 t1 = time.time()
                     
@@ -536,8 +550,9 @@ class PiccoloRP:
                     break
                 opcode = struct.unpack("I", data[:4])[0]
                 if opcode == 99:
-                    print("Shutdown signal received. Exiting.")
-                    os._exit(0)
+                    print("Shutdown signal received.")
+                    self.shutdown_event.set()
+                    return
                 else:
                     print(f"[Control] Unknown opcode: {opcode}")
         finally:
@@ -559,9 +574,14 @@ class PiccoloRP:
         try:
             while True:
                 # send the latest available data
-                if hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data') and hasattr(self, 'ch3_data') and hasattr(self, 'ch4_data'):
-                    combined_data = self.ch1_data + self.ch2_data + self.ch3_data + self.ch4_data
+                with self.adc_lock:
+                    has_data = hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data') and hasattr(self, 'ch3_data') and hasattr(self, 'ch4_data')
+                    if has_data:
+                        combined_data = self.ch1_data + self.ch2_data + self.ch3_data + self.ch4_data
+                if has_data:
                     client.sendall(struct.pack(f'{4*len(self.ch1_data)}f', *combined_data))
+                else:
+                    time.sleep(0.01)
         except Exception as e:
             print(f"[ADCStream] Error: {e}")
         finally:
@@ -601,7 +621,9 @@ class PiccoloRP:
                     break
 
                 msg_len = struct.unpack("I", header[:4])[0]
-                msg = client.recv(msg_len)
+                msg = self._recv_all(client, msg_len)
+                if not msg:
+                    break
                 data = json.loads(msg.decode())
                 var_name = data["name"]
                 value = data["value"]
@@ -641,8 +663,11 @@ class PiccoloRP:
             print(f"[Port {port}] Server started.")
 
         print("All servers running.")
-        while True:
-            time.sleep(0.001)  # keep main thread alive
+        self.shutdown_event.wait()
+        print("Shutdown event received. Cleaning up...")
+        self.mmap.close()
+        self.mem_fd.close()
+        print("Cleanup complete. Exiting.")
 
     def test(self):
         print("\n////////// Starting Red Pitaya Piccolo Testing ///////////")

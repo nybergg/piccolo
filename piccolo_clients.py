@@ -102,10 +102,6 @@ class ADCStreamClient(BaseClient):
         finally:
             self.close()
 
-        # Initialize to empty lists to avoid reference before assignment on error
-        adc1_data, adc2_data, adc3_data, adc4_data = [], [], [], []
-        return adc1_data, adc2_data, adc3_data, adc4_data
-
 class MemoryStreamClient(BaseClient):
     """Stream droplet/memory data."""
     def __init__(self, port=5002, data_callback=None):
@@ -135,8 +131,6 @@ class MemoryStreamClient(BaseClient):
             print(f"[MemoryStreamClient] Error during _run: {e}")
         finally:
             self.close()
-
-        return fpgaoutput
 
 
 class MemoryCommandClient(BaseClient):

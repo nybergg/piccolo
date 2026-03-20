@@ -14,4 +14,4 @@ redpitaya/rp_login_4CH.json
 concurrency_tools.py
 logs
 __pycache__
-
+venv/

@@ -26,11 +26,14 @@ class LaserBox:
             raise IOError('%s: No connection on port %s'%(name, which_port))
         if self.verbose: print(" done.")
         # check laser box is connected using serial number:
-        assert serial_number == self._get_serial_number(), (
-            'serial number (%s) does not match user input (%s)'%(
-                self.serial_number, serial_number))
+        actual_sn = self._get_serial_number()
+        if serial_number != actual_sn:
+            raise ValueError(
+                '%s: serial number (%s) does not match expected (%s)'%(
+                    name, actual_sn, serial_number))
         # check key switch status:
-        assert self._get_key_switch_status(), 'key switch is off'
+        if not self._get_key_switch_status():
+            raise RuntimeError('%s: key switch is off'%name)
         # init attributes and dicts to map laser names to values:
         self.names = name2num_and_max_power_mw.keys()
         self.name2num = {}
@@ -38,7 +41,7 @@ class LaserBox:
         self.wavelengths_nm = {}
         self.power_mw = {}
         self.on_state = {}
-        self.active_state = {}        
+        self.active_state = {}
         for name in self.names:
             self.name2num[name] = name2num_and_max_power_mw[name][0]
             self.max_power_mw[name] = name2num_and_max_power_mw[name][1]
@@ -47,15 +50,21 @@ class LaserBox:
             self.get_on_state(name)
             self.get_active_state(name)
 
+    def _check_laser_name(self, name):
+        if name not in self.name2num:
+            raise ValueError('%s: unknown laser name: %s'%(self.name, name))
+
     def _send(self, cmd):
-        assert isinstance(cmd, str)
+        if not isinstance(cmd, str):
+            raise TypeError('%s: command must be a string, got %s'%(self.name, type(cmd)))
         cmd = bytes(cmd + '\r', 'ascii')
         if self.very_verbose: print("%s: sending cmd = "%self.name, cmd)
         self.port.write(cmd)
         response = self.port.readline().decode('ascii').strip('\r\n')
         if response == 'Syntax error: illegal command':
             raise ValueError('Illegal command:', cmd)
-        assert self.port.in_waiting == 0
+        if self.port.in_waiting != 0:
+            raise IOError('%s: unexpected data in serial buffer after command'%self.name)
         if self.very_verbose: print("%s: -> response = "%self.name, response)
         return response
 
@@ -88,7 +97,7 @@ class LaserBox:
     def get_power(self, name):
         if self.verbose:
             print("%s(%s): getting power"%(self.name, name))
-        assert name in self.name2num.keys(), 'unknown laser name'
+        self._check_laser_name(name)
         self.power_mw[name] = round(
             1e3 * float(self._send(self.name2num[name] + 'p?')), 1)
         if self.verbose:
@@ -99,19 +108,24 @@ class LaserBox:
     def set_power(self, name, power_mw):
         if self.verbose:
             print("%s(%s): setting power = %s"%(self.name, name, power_mw))
-        assert name in self.name2num.keys(), 'unknown laser name'
-        assert 0 <= power_mw <= self.max_power_mw[name], (
-            'power_mw (%s) out of range'%power_mw)
+        self._check_laser_name(name)
+        if not (0 <= power_mw <= self.max_power_mw[name]):
+            raise ValueError(
+                '%s(%s): power_mw (%s) out of range [0, %s]'%(
+                    self.name, name, power_mw, self.max_power_mw[name]))
         self._send(self.name2num[name] + 'p ' + str(float(1e-3 * power_mw)))
-        assert self.get_power(name) == power_mw
+        actual = self.get_power(name)
+        if actual != power_mw:
+            raise RuntimeError(
+                '%s(%s): set_power failed, expected %s but got %s'%(
+                    self.name, name, power_mw, actual))
         if self.verbose:
             print("%s(%s): -> done setting power."%(self.name, name))
-        return None
 
     def get_on_state(self, name):
         if self.verbose:
             print("%s(%s): getting on state"%(self.name, name))
-        assert name in self.name2num.keys(), 'unknown laser name'
+        self._check_laser_name(name)
         self.on_state[name] = bool(int(self._send(self.name2num[name] + 'l?')))
         if self.verbose:
             print("%s(%s): -> on state = %s"%(
@@ -121,17 +135,20 @@ class LaserBox:
     def set_on_state(self, name, state): # ***Turns laser ON!***
         if self.verbose:
             print("%s(%s): setting on state = %s"%(self.name, name, state))
-        assert name in self.name2num.keys(), 'unknown laser name'
+        self._check_laser_name(name)
         self._send(self.name2num[name] + 'l' + str(int(state)))
-        assert self.get_on_state(name) == state
+        actual = self.get_on_state(name)
+        if actual != state:
+            raise RuntimeError(
+                '%s(%s): set_on_state failed, expected %s but got %s'%(
+                    self.name, name, state, actual))
         if self.verbose:
             print("%s(%s): -> done setting on state."%(self.name, name))
-        return None
 
     def get_active_state(self, name):
         if self.verbose:
             print("%s(%s): getting active state"%(self.name, name))
-        assert name in self.name2num.keys(), 'unknown laser name'
+        self._check_laser_name(name)
         self.active_state[name] = bool(
             int(self._send(self.name2num[name] + 'gla?')))
         if self.verbose:
@@ -142,12 +159,15 @@ class LaserBox:
     def set_active_state(self, name, state): # ***Turns laser active!***
         if self.verbose:
             print("%s(%s): setting active state = %s"%(self.name, name, state))
-        assert name in self.name2num.keys(), 'unknown laser name'
+        self._check_laser_name(name)
         self._send(self.name2num[name] + 'sla ' + str(int(state)))
-        assert self.get_active_state(name) == state
+        actual = self.get_active_state(name)
+        if actual != state:
+            raise RuntimeError(
+                '%s(%s): set_active_state failed, expected %s but got %s'%(
+                    self.name, name, state, actual))
         if self.verbose:
             print("%s(%s): -> done setting active state."%(self.name, name))
-        return None
 
     def shutdown(self):
         if self.verbose: print("%s: shutting down..."%self.name)
@@ -156,13 +176,11 @@ class LaserBox:
             self.set_active_state(name, False)
             self.set_on_state(name, False)
         if self.verbose: print("%s: shut down."%self.name)
-        return None
-    
+
     def close(self):
         if self.verbose: print("%s: closing..."%self.name)
         self.port.close()
         if self.verbose: print("%s: closed."%self.name)
-        return None
 
 if __name__ == '__main__':
     import time
