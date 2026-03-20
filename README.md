@@ -59,39 +59,36 @@ pytest
 
 ## Architecture
 
-The system is organized into three layers: FPGA, instrument, and UI.
+The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connected via TCP. On the host side, the code is layered so that the UI never talks to hardware directly — it goes through a controller, which delegates to drivers and clients.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  UI Layer  (Dash/Plotly web app on host PC)                  │
-│  ui/layout.py      — component definitions                   │
-│  ui/callbacks.py   — all Dash callbacks                      │
-│  ui/app.py         — app factory + MJPEG streaming           │
-├──────────────────────────────────────────────────────────────┤
-│  Controller Layer                                            │
-│  controllers/controller.py          — InstrumentController   │
-│                                       (ABC + shared logic)   │
-│  controllers/hardware_controller.py — HardwareController     │
-│                                       (real hardware)        │
-│  controllers/hardware_simulator.py  — HardwareSimulator      │
-│                                       (synthetic signals)    │
-├──────────────────────────────────────────────────────────────┤
-│  Drivers & Clients                                           │
-│  drivers/laser.py     — LaserBox (Cobalt Skyra serial)       │
-│  drivers/camera.py    — CameraManager (Basler pypylon)       │
-│  piccolo_clients.py   — TCP clients for Red Pitaya           │
-│  conversion.py        — unit conversion (single source)      │
-├──────────────────────────────────────────────────────────────┤
-│  firmware/arm/piccolo_rp.py  (runs on Red Pitaya ARM)        │
-│  - Memory-maps FPGA registers via /dev/mem                   │
-│  - Hosts TCP servers for data streaming and commands         │
-├──────────────────────────────────────────────────────────────┤
-│  firmware/fpga/  (FPGA bitstream + RTL)                      │
-│  - Real-time droplet detection on 4 ADC channels             │
-│  - Threshold, width, and area gating per channel             │
-│  - Sort trigger output                                       │
-└──────────────────────────────────────────────────────────────┘
+ Host PC                              Red Pitaya
+┌─────────────────────────────┐      ┌──────────────────────────┐
+│                             │      │                          │
+│  ┌───────────────────────┐  │      │  firmware/arm/           │
+│  │  UI                   │  │      │  piccolo_rp.py           │
+│  │  layout + callbacks   │  │      │  - mmap FPGA registers   │
+│  └──────────┬────────────┘  │      │  - TCP servers (:5001-3) │
+│             │               │      │                          │
+│  ┌──────────▼────────────┐  │      └────────────▲─────────────┘
+│  │  Controller           │  │                   │ TCP
+│  │  HardwareController   │  │  ┌────────────────┘
+│  │    or                 │  │  │
+│  │  HardwareSimulator    │  │  │   ┌──────────────────────────┐
+│  └──┬─────────┬──────────┘  │  │   │  FPGA                    │
+│     │         │             │  │   │  - 4-ch ADC acquisition   │
+│  ┌──▼───┐ ┌──▼──────────┐  │  │   │  - droplet detection     │
+│  │Laser │ │TCP Clients   │──┼──┘   │  - sort trigger output   │
+│  │Camera│ │(ADC, Memory, │  │      └──────────────────────────┘
+│  │      │ │ Command)     │  │
+│  └──────┘ └──────────────┘  │
+│                             │
+└─────────────────────────────┘
 ```
+
+**Controllers** make decisions (detection, gating, data buffering). They implement a shared `InstrumentController` interface so the UI works identically with real hardware or simulation.
+
+**Drivers** own a hardware resource (laser serial port, camera USB). **Clients** handle the TCP protocol to the Red Pitaya.
 
 ## Repository Structure
 
