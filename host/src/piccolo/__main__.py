@@ -7,6 +7,7 @@ and runs the Dash server.
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import time
@@ -117,7 +118,13 @@ def main():
     app = create_app(controller, camera_manager=camera_manager, simulate=config.simulate)
 
     # Shutdown handler
+    _cleaned_up = False
+
     def cleanup():
+        nonlocal _cleaned_up
+        if _cleaned_up:
+            return
+        _cleaned_up = True
         print("\nInitiating shutdown sequence...")
         if camera_manager:
             print("Stopping camera...")
@@ -131,10 +138,10 @@ def main():
         print("Cleanup finished.")
 
     def handle_signal(sig, frame):
-        print(f"Received signal {sig}, initiating shutdown...")
+        print(f"\nReceived signal {sig}, shutting down...")
         cleanup()
-        time.sleep(0.5)
-        sys.exit(0)
+        # Force-kill the process to ensure Werkzeug doesn't linger
+        os._exit(0)
 
     signal.signal(signal.SIGINT, handle_signal)
     try:
@@ -157,8 +164,10 @@ def main():
     if not args.no_browser:
         Timer(1.5, lambda: webbrowser.open_new_tab(server_url)).start()
 
-    app.run(debug=False, port=config.server_port)
-    cleanup()
+    try:
+        app.run(debug=False, port=config.server_port)
+    finally:
+        cleanup()
 
 
 if __name__ == '__main__':
