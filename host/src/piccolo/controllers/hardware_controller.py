@@ -185,7 +185,7 @@ class HardwareController(InstrumentController):
             print("[HardwareController] FPGA overlay reset to v0.49.")
 
         print("[HardwareController] Loading bitstream...")
-        _, stdout, stderr = ssh.exec_command(f"fpgautil -b {bitstream_path}", timeout=30)
+        _, stdout, stderr = ssh.exec_command(f"/opt/redpitaya/bin/fpgautil -b {bitstream_path}", timeout=30)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status == 0:
             if self.verbose:
