@@ -11,7 +11,7 @@ class PiccoloConfig:
     # Mode
     simulate: bool = True
     launch_rp: bool = True
-    camera_enabled: bool = False
+    camera_enabled: bool = True
 
     # Red Pitaya
     rp_ip: str = ""

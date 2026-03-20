@@ -5,7 +5,7 @@
 # Mode
 simulate: true          # true = use HardwareSimulator, false = connect to real hardware
 launch_rp: true         # true = deploy code and load bitstream on startup (ignored in sim mode)
-camera_enabled: false   # true = start camera thread (requires pypylon + OpenCV)
+camera_enabled: true    # true = start camera thread (requires pypylon + OpenCV)
 
 # Red Pitaya connection
 # Credentials are loaded via --rp-login (not stored here for security).
