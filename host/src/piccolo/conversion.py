@@ -7,6 +7,10 @@ Used by both instrument controllers and the UI.
 
 import re
 
+# FPGA clock frequency in MHz — the ADC clock on the Red Pitaya STEMlab.
+# Width and area registers count in clock cycles at this rate.
+FPGA_CLK_MHZ = 125
+
 
 def raw_to_volts(raw_value, ch, calibration, vp=20.0, adc_max=8192.0):
     """Convert raw ADC value to volts using calibration values."""
@@ -45,14 +49,14 @@ def convert_registers(raw_registers, calibration):
                     display_value = raw_to_volts(numeric_value, ch, calibration)
                     unit = "V"
                 elif 'area_thresh' in name:
-                    display_value = raw_to_volts(numeric_value, ch, calibration) / 1000.0
+                    display_value = raw_to_volts(numeric_value, ch, calibration) / (FPGA_CLK_MHZ * 1000)
                     unit = "V·ms"
                 elif 'width_thresh' in name:
-                    display_value = numeric_value / 1000.0
+                    display_value = numeric_value / (FPGA_CLK_MHZ * 1000)
                     unit = "ms"
             elif 'sort_delay' in name or 'sort_duration' in name or 'camera_trig_delay' in name or 'camera_trig_duration' in name:
-                display_value = numeric_value / 1000.0
-                unit = "ms"
+                display_value = numeric_value
+                unit = "µs"
             elif name == 'droplet_frequency':
                 if numeric_value != 0:
                     display_value = int(1e6 / numeric_value)
@@ -85,15 +89,15 @@ def convert_display_to_raw(register_name, display_value, calibration):
         if 'intensity_thresh' in register_name:
             return volts_to_raw(display_value, ch, calibration)
         elif 'area_thresh' in register_name:
-            # User enters V·ms, convert to V then to raw
-            volts = display_value * 1000.0
+            # User enters V·ms, convert to cc×raw
+            volts = display_value * FPGA_CLK_MHZ * 1000
             return volts_to_raw(volts, ch, calibration)
         elif 'width_thresh' in register_name:
-            # User enters ms, convert to us
-            return int(display_value * 1000.0)
+            # User enters ms, convert to clock cycles
+            return int(display_value * FPGA_CLK_MHZ * 1000)
     elif 'sort_delay' in register_name or 'sort_duration' in register_name or 'camera_trig_delay' in register_name or 'camera_trig_duration' in register_name:
-        # User enters ms, convert to us
-        return int(display_value * 1000.0)
+        # Already in µs
+        return int(display_value)
 
     # No conversion needed
     return int(display_value)

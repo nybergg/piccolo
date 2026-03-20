@@ -143,6 +143,19 @@ piccolo/
 - **Data logging** — export droplet scatter data and raw ADC signals to CSV
 - **Simulation mode** — full UI with synthetic data for development without hardware
 
+## FPGA Register Units
+
+The FPGA runs at **125 MHz** (8 ns per clock cycle). Register values are stored in raw FPGA units and converted for display:
+
+| Register | Raw unit | Display unit | Conversion |
+|---|---|---|---|
+| Intensity thresholds | 14-bit signed ADC | V | Calibration: `(raw − offset) × gain / 8192 × 20` |
+| Width thresholds | Clock cycles | ms | `÷ 125,000` |
+| Area thresholds | Clock cycles × raw ADC | V·ms | `raw_to_volts() ÷ 125,000` |
+| Sort delay / duration | µs | µs | Passthrough |
+| Camera trigger delay / duration | µs | µs | Passthrough |
+| Droplet frequency | Period in µs | Hz | `1,000,000 ÷ value` |
+
 ## Communication Protocol
 
 The Red Pitaya hosts four TCP servers:

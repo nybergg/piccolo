@@ -62,25 +62,25 @@ class TestConvertRegisters:
         assert value == pytest.approx(raw_to_volts(100, 0, CAL), rel=1e-6)
 
     def test_width_thresh_converted_to_ms(self):
-        regs = {"min_width_thresh[1]": 5000}
+        regs = {"min_width_thresh[1]": 125000}  # 125000 cc = 1.0 ms at 125 MHz
         result = convert_registers(regs, CAL)
         value, unit = result["min_width_thresh[1]"]
         assert unit == "ms"
-        assert value == pytest.approx(5.0)
+        assert value == pytest.approx(1.0)
 
     def test_area_thresh_converted_to_vms(self):
         regs = {"low_area_thresh[2]": 1000}
         result = convert_registers(regs, CAL)
         value, unit = result["low_area_thresh[2]"]
         assert unit == "V·ms"
-        assert value == pytest.approx(raw_to_volts(1000, 2, CAL) / 1000.0, rel=1e-6)
+        assert value == pytest.approx(raw_to_volts(1000, 2, CAL) / 125000.0, rel=1e-6)
 
-    def test_sort_delay_converted_to_ms(self):
+    def test_sort_delay_converted_to_us(self):
         regs = {"sort_delay": 2500}
         result = convert_registers(regs, CAL)
         value, unit = result["sort_delay"]
-        assert unit == "ms"
-        assert value == pytest.approx(2.5)
+        assert unit == "µs"
+        assert value == 2500
 
     def test_droplet_frequency_zero(self):
         regs = {"droplet_frequency": 0}
@@ -115,7 +115,7 @@ class TestConvertDisplayToRaw:
         assert recovered == raw_val
 
     def test_width_round_trip(self):
-        raw_val = 12500  # 12.5 ms
+        raw_val = 12500  # 12500 cc = 100 µs at 125 MHz
         regs = {"low_width_thresh[1]": raw_val}
         converted = convert_registers(regs, CAL)
         display_val, _ = converted["low_width_thresh[1]"]
@@ -123,7 +123,7 @@ class TestConvertDisplayToRaw:
         assert recovered == raw_val
 
     def test_sort_delay_round_trip(self):
-        raw_val = 3000  # 3.0 ms
+        raw_val = 3000  # 3000 µs
         regs = {"sort_delay": raw_val}
         converted = convert_registers(regs, CAL)
         display_val, _ = converted["sort_delay"]

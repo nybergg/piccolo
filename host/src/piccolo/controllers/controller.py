@@ -106,11 +106,13 @@ class InstrumentController(ABC):
 
             # Convert display units to raw FPGA values
             if "_vms" in key:
-                low_val = int(self.convert_volts_to_raw(low_val, ch) * 1000)
-                high_val = int(self.convert_volts_to_raw(high_val, ch) * 1000)
+                from piccolo.conversion import FPGA_CLK_MHZ
+                low_val = int(self.convert_volts_to_raw(low_val, ch) * FPGA_CLK_MHZ * 1000)
+                high_val = int(self.convert_volts_to_raw(high_val, ch) * FPGA_CLK_MHZ * 1000)
             elif "_ms" in key:
-                low_val = int(low_val * 1000)
-                high_val = int(high_val * 1000)
+                from piccolo.conversion import FPGA_CLK_MHZ
+                low_val = int(low_val * FPGA_CLK_MHZ * 1000)
+                high_val = int(high_val * FPGA_CLK_MHZ * 1000)
             elif "_v" in key:
                 low_val = self.convert_volts_to_raw(low_val, ch)
                 high_val = self.convert_volts_to_raw(high_val, ch)

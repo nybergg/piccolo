@@ -240,7 +240,7 @@ def _camera_column(camera_available):
             html.Label("Exposure Time (us):"),
             dcc.Slider(id='camera-exposure-slider', min=28, max=200, step=1, value=28, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Label("Camera Trigger Delay (us):"),
-            dcc.Slider(id='camera-trigger-delay-slider', min=0, max=1000, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
+            dcc.Slider(id='camera-trigger-delay-slider', min=0, max=5000, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
             html.Div(id='camera-settings-status', className="mt-2")
         ], style={'display': 'block' if camera_available else 'none'}),
     ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})

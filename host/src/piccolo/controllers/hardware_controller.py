@@ -16,7 +16,7 @@ import posixpath
 import pandas as pd
 
 from piccolo.controllers.controller import InstrumentController
-from piccolo.conversion import raw_to_volts
+from piccolo.conversion import raw_to_volts, FPGA_CLK_MHZ
 from piccolo.piccolo_clients import (
     ADCStreamClient,
     MemoryStreamClient,
@@ -330,11 +330,11 @@ class HardwareController(InstrumentController):
 
                 raw_area = fpgaoutput[f"cur_droplet_area[{ch}]"]
                 row[f"cur_droplet_area[{ch}]"] = raw_area
-                row[f"cur_droplet_area_vms[{ch}]"] = self.convert_raw_to_volts(raw_area, ch) / 1000.0
+                row[f"cur_droplet_area_vms[{ch}]"] = self.convert_raw_to_volts(raw_area, ch) / (FPGA_CLK_MHZ * 1000)
 
                 raw_width = fpgaoutput[f"cur_droplet_width[{ch}]"]
                 row[f"cur_droplet_width[{ch}]"] = raw_width
-                row[f"cur_droplet_width_ms[{ch}]"] = raw_width / 1000.0
+                row[f"cur_droplet_width_ms[{ch}]"] = raw_width / (FPGA_CLK_MHZ * 1000)
 
             with self.data_lock:
                 self.fpga_registers.update(fpgaoutput)

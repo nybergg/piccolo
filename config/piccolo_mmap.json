@@ -77,14 +77,14 @@
         "name": "min_width_thresh",
         "addr": ["0x001060", "0x001064", "0x001068", "0x00106C"],
         "dtype": "32'd",
-        "default": [6000, 6000, 6000, 6000],
+        "default": [500, 500, 500, 500],
         "units": "clock cycles"
         },
         {
         "name": "low_width_thresh",
         "addr": ["0x001080", "0x001084", "0x001088", "0x00108C"],
         "dtype": "32'd",
-        "default": [6000, 6000, 6000, 6000],
+        "default": [500, 500, 500, 500],
         "units": "clock cycles"
         },
         {
