@@ -178,4 +178,4 @@ Core dependencies are managed via `host/pyproject.toml`:
 Optional (install with `pip install -e ".[camera]"`):
 
 - `opencv-python` — camera frame processing
-- `pypylon` — Basler camera SDK (must be installed from [Basler's pylon SDK](https://www.baslerweb.com/en/software/pylon/), not available via pip)
+- `pypylon` — Basler camera Python bindings (requires [pylon Viewer/SDK](https://www.baslerweb.com/en/software/pylon/) installed on the system)

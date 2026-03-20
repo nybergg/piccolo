@@ -23,7 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 camera = [
     "opencv-python>=4.0",
-    # pypylon must be installed separately from Basler's SDK
+    "pypylon>=3.0",
 ]
 dev = [
     "pytest>=7.0",
