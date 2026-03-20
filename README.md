@@ -8,65 +8,131 @@ Piccolo is a fluorescence-activated droplet sorting (FADS) instrument control sy
 
 ## Quickstart
 
-1. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+### Installation
 
-2. Run the UI:
-   ```
-   python piccolo_ui.py
-   ```
+```bash
+cd host
+pip install -e .
+```
 
-   The web interface launches at `http://127.0.0.1:8050/`.
+For camera support (requires [Basler pylon SDK](https://www.baslerweb.com/en/software/pylon/) installed separately):
 
-3. To run without hardware (simulation mode), set `simulate = True` in `piccolo_ui.py`.
+```bash
+pip install -e ".[camera]"
+```
+
+### Running
+
+```bash
+# Simulation mode (no hardware required)
+python -m piccolo --simulate
+
+# Real hardware
+python -m piccolo --no-simulate --rp-login config/rp_login.json
+
+# All options
+python -m piccolo --help
+```
+
+The web interface launches at `http://127.0.0.1:8050/`.
+
+### CLI Options
+
+| Flag | Description |
+|---|---|
+| `--simulate` | Run with synthetic data (no hardware required) |
+| `--no-simulate` | Connect to real hardware |
+| `--config PATH` | YAML config file (default: `config/default.yaml`) |
+| `--rp-login PATH` | Red Pitaya login JSON (IP, username, password) |
+| `--no-camera` | Disable camera even if enabled in config |
+| `--no-launch-rp` | Skip deploying code to the Red Pitaya |
+| `--port PORT` | Dash server port (default: 8050) |
+| `--no-browser` | Don't auto-open browser on startup |
+| `--verbose` | Enable verbose output |
+
+### Running Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
 ## Architecture
 
 The system is organized into three layers: FPGA, instrument, and UI.
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  piccolo_ui.py  (Dash/Plotly web UI on host PC)      │
-│  - Scatter plots, signal viewer, camera feed         │
-│  - Laser controls, gating, FPGA register editor      │
-├──────────────────────────────────────────────────────┤
-│  piccolo_instrument.py  (Instrument controller)      │
-│  - Manages Red Pitaya connection (SSH/SCP)           │
-│  - Runs TCP clients for data streaming & commands    │
-│  - Controls Cobalt Skyra laser box via serial        │
-│  piccolo_clients.py  (TCP client implementations)    │
-│  cobalt_skyra.py  (Laser serial driver)              │
-├──────────────────────────────────────────────────────┤
-│  redpitaya/piccolo_rp.py  (Runs on Red Pitaya ARM)   │
-│  - Memory-maps FPGA registers for read/write         │
-│  - Exposes TCP servers for remote access              │
-│  - Streams ADC waveforms and droplet measurements    │
-├──────────────────────────────────────────────────────┤
-│  fpga/  (FPGA bitstream + RTL)                       │
-│  - Real-time droplet detection on 4 ADC channels     │
-│  - Threshold, width, and area gating per channel     │
-│  - Sort trigger output                               │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  UI Layer  (Dash/Plotly web app on host PC)                  │
+│  ui/layout.py      — component definitions                   │
+│  ui/callbacks.py   — all Dash callbacks                      │
+│  ui/app.py         — app factory + MJPEG streaming           │
+├──────────────────────────────────────────────────────────────┤
+│  Controller Layer                                            │
+│  controllers/controller.py          — InstrumentController   │
+│                                       (ABC + shared logic)   │
+│  controllers/hardware_controller.py — HardwareController     │
+│                                       (real hardware)        │
+│  controllers/hardware_simulator.py  — HardwareSimulator      │
+│                                       (synthetic signals)    │
+├──────────────────────────────────────────────────────────────┤
+│  Drivers & Clients                                           │
+│  drivers/laser.py     — LaserBox (Cobalt Skyra serial)       │
+│  drivers/camera.py    — CameraManager (Basler pypylon)       │
+│  piccolo_clients.py   — TCP clients for Red Pitaya           │
+│  conversion.py        — unit conversion (single source)      │
+├──────────────────────────────────────────────────────────────┤
+│  firmware/arm/piccolo_rp.py  (runs on Red Pitaya ARM)        │
+│  - Memory-maps FPGA registers via /dev/mem                   │
+│  - Hosts TCP servers for data streaming and commands         │
+├──────────────────────────────────────────────────────────────┤
+│  firmware/fpga/  (FPGA bitstream + RTL)                      │
+│  - Real-time droplet detection on 4 ADC channels             │
+│  - Threshold, width, and area gating per channel             │
+│  - Sort trigger output                                       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## File Overview
+## Repository Structure
 
-| File | Description |
-|---|---|
-| `piccolo_ui.py` | Dash web application — plots, controls, camera feed, FPGA register editor |
-| `piccolo_instrument.py` | Instrument class — connects to Red Pitaya, manages clients, controls lasers, handles unit conversion |
-| `piccolo_instrument_sim.py` | Simulation mode — generates synthetic droplet signals for offline development |
-| `piccolo_clients.py` | TCP client classes for communicating with the Red Pitaya servers |
-| `cobalt_skyra.py` | Serial driver for the Cobalt Skyra multi-laser box |
-| `redpitaya/piccolo_rp.py` | Runs on the Red Pitaya — memory-maps FPGA registers and hosts TCP servers |
-| `redpitaya/piccolo_mmap.json` | FPGA register map — defines variable names, addresses, data types, and defaults |
-| `fpga/rtl/` | SystemVerilog RTL source for the FADS detection and sorting logic |
-| `fpga/piccolo.bit.bin` | Compiled FPGA bitstream, loaded onto the Red Pitaya at startup |
-| `laser_config.json` | Laser box configuration — COM port, serial number, wavelength-to-channel mapping |
-| `redpitaya/rp_login.json` | Red Pitaya SSH credentials (IP, username, password) |
-| `assets/` | CSS stylesheets for the Dash UI |
+```
+piccolo/
+├── host/                              # Everything that runs on the PC
+│   ├── pyproject.toml                 # Package metadata + dependencies
+│   ├── src/piccolo/
+│   │   ├── __main__.py                # Entry point: python -m piccolo
+│   │   ├── config.py                  # Config loading from YAML
+│   │   ├── conversion.py             # Unit conversion (raw ↔ volts, register display)
+│   │   ├── piccolo_clients.py         # TCP client classes
+│   │   ├── controllers/
+│   │   │   ├── controller.py          # InstrumentController ABC
+│   │   │   ├── hardware_controller.py # Real hardware controller
+│   │   │   └── hardware_simulator.py  # Simulation controller
+│   │   ├── drivers/
+│   │   │   ├── laser.py               # LaserBox — Cobalt Skyra serial driver
+│   │   │   └── camera.py              # CameraManager — Basler pypylon driver
+│   │   └── ui/
+│   │       ├── app.py                 # Dash app factory
+│   │       ├── layout.py              # UI layout definitions
+│   │       ├── callbacks.py           # All Dash callbacks
+│   │       └── assets/                # CSS stylesheets
+│   └── tests/
+│       ├── test_conversion.py
+│       ├── test_hardware_simulator.py
+│       ├── test_config.py
+│       └── test_clients.py
+├── firmware/                          # Everything deployed to the Red Pitaya
+│   ├── arm/piccolo_rp.py              # Runs on RP ARM core
+│   └── fpga/                          # RTL + bitstream
+│       ├── rtl/                       # SystemVerilog source
+│       └── piccolo.bit.bin            # Compiled bitstream
+├── config/                            # Shared configuration
+│   ├── default.yaml                   # Runtime config (all settings in one place)
+│   ├── rp_login.json                  # Red Pitaya SSH credentials (gitignored)
+│   ├── laser_config.json              # Laser box setup
+│   └── piccolo_mmap.json             # FPGA register map (shared by host + firmware)
+└── README.md
+```
 
 ## Key Features
 
@@ -103,11 +169,15 @@ The Red Pitaya hosts four TCP servers:
 
 ## Dependencies
 
-Key Python packages (see `requirements.txt` for full list):
+Core dependencies are managed via `host/pyproject.toml`:
 
 - `dash`, `plotly`, `dash-bootstrap-components` — web UI
 - `paramiko`, `scp` — SSH/SCP to Red Pitaya
-- `pypylon` — Basler camera SDK
-- `opencv-python` — camera frame processing
 - `numpy`, `pandas`, `scipy` — data handling and analysis
 - `pyserial` — laser box serial communication
+- `pyyaml` — configuration loading
+
+Optional (install with `pip install -e ".[camera]"`):
+
+- `opencv-python` — camera frame processing
+- `pypylon` — Basler camera SDK (must be installed from [Basler's pylon SDK](https://www.baslerweb.com/en/software/pylon/), not available via pip)
