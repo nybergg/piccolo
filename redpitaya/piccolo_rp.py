@@ -495,34 +495,24 @@ class PiccoloRP:
             
                 rp.rp_AcqUnlockTrigger()
 
-                # Convert to list for streaming
-                ch1_data = [ch1_buffer[i] for i in range(sub_N)]
-                ch2_data = [ch2_buffer[i] for i in range(sub_N)]
-                ch3_data = [ch3_buffer[i] for i in range(sub_N)]
-                ch4_data = [ch4_buffer[i] for i in range(sub_N)]
+                # Pre-pack ADC data as bytes for fast streaming
+                fmt = f'{sub_N}f'
+                adc_bytes = (
+                    struct.pack(fmt, *(ch1_buffer[i] for i in range(sub_N))) +
+                    struct.pack(fmt, *(ch2_buffer[i] for i in range(sub_N))) +
+                    struct.pack(fmt, *(ch3_buffer[i] for i in range(sub_N))) +
+                    struct.pack(fmt, *(ch4_buffer[i] for i in range(sub_N)))
+                )
 
-                # Store the data as attribute to class
                 with self.adc_lock:
-                    self.ch1_data = ch1_data
-                    self.ch2_data = ch2_data
-                    self.ch3_data = ch3_data
-                    self.ch4_data = ch4_data
+                    self.adc_bytes = adc_bytes
 
                 t1 = time.time()
                     
                 if self.verbose:
                     print("ADC data acquired successfully.")
                 if self.very_verbose:
-                    # print first 20 values of each channel
                     print(f"Acquisition time: {t1 - t0:.2f} seconds")
-                    print("First 20 values of ADC 1 data:", ch1_data[:20])
-                    print("Max of ADC 1 data:", max(ch1_data))
-                    print("First 20 values of ADC 2 data:", ch2_data[:20])
-                    print(f"Max of ADC 2 data: {max(ch2_data)}")
-                    print("First 20 values of ADC 3 data:", ch3_data[:20])
-                    print(f"Max of ADC 3 data: {max(ch3_data)}")
-                    print("First 20 values of ADC 4 data:", ch4_data[:20])
-                    print(f"Max of ADC 4 data: {max(ch4_data)}")
 
                 if not continuous:
                     break
@@ -573,13 +563,10 @@ class PiccoloRP:
         # Continuously stream ADC data to the client
         try:
             while True:
-                # send the latest available data
                 with self.adc_lock:
-                    has_data = hasattr(self, 'ch1_data') and hasattr(self, 'ch2_data') and hasattr(self, 'ch3_data') and hasattr(self, 'ch4_data')
-                    if has_data:
-                        combined_data = self.ch1_data + self.ch2_data + self.ch3_data + self.ch4_data
-                if has_data:
-                    client.sendall(struct.pack(f'{4*len(self.ch1_data)}f', *combined_data))
+                    data = getattr(self, 'adc_bytes', None)
+                if data:
+                    client.sendall(data)
                 else:
                     time.sleep(0.01)
         except Exception as e:
@@ -592,18 +579,24 @@ class PiccoloRP:
     
     def _getmem_server(self, client):
         """ TCP server that streams fpga outputs """
-        
+
         # Continuously stream FPGA outputs to the client
+        last_droplet_id = None
         try:
             while True:
                 self.get_all()
-                msg = json.dumps(self.fpga_vars).encode()
-                length = struct.pack("I", len(msg)).ljust(16, b'\x00')
-                client.sendall(length + msg)
-                time.sleep(0.005)  # or trigger-based
-                val = self.fpga_vars['droplet_id']
-                if self.verbose:
-                    print(f"Cur Droplet ID:{val}")
+                cur_droplet_id = self.fpga_vars.get('droplet_id')
+
+                # Only send when a new droplet is detected
+                if cur_droplet_id != last_droplet_id:
+                    last_droplet_id = cur_droplet_id
+                    msg = json.dumps(self.fpga_vars).encode()
+                    length = struct.pack("I", len(msg)).ljust(16, b'\x00')
+                    client.sendall(length + msg)
+                    if self.verbose:
+                        print(f"Cur Droplet ID:{cur_droplet_id}")
+
+                time.sleep(0.001)
         except Exception as e:
             print(f"[MemStream] Error: {e}")
         finally:

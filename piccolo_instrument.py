@@ -57,6 +57,7 @@ class Instrument:
         # Setup droplet data buffer
         self.data_lock = threading.Lock()
         self.buffer_size = 1000
+        self._droplet_rows = []  # Fast append buffer
         self.droplet_data = pd.DataFrame()
         self.adc1_data = []
         self.adc2_data = []
@@ -421,19 +422,33 @@ class Instrument:
                 row[f"cur_droplet_width[{ch}]"] = raw_width
                 row[f"cur_droplet_width_ms[{ch}]"] = raw_width / 1000.0
 
+            # Append to fast list buffer and update registers (both instant)
             with self.data_lock:
-                # Update the FPGA register cache with the latest values
                 self.fpga_registers.update(fpgaoutput)
-
-                # Append to DataFrame
-                self.droplet_data = pd.concat([self.droplet_data, pd.DataFrame([row])], ignore_index=True)
-
-                # Maintain rolling size
-                if len(self.droplet_data) > self.buffer_size:
-                    self.droplet_data = self.droplet_data.iloc[-self.buffer_size:]
+                self._droplet_rows.append(row)
+                # Trim the list buffer
+                if len(self._droplet_rows) > self.buffer_size:
+                    self._droplet_rows = self._droplet_rows[-self.buffer_size:]
 
         except Exception as e:
             print(f"[Instrument] Error parsing droplet data: {e}")
+
+    @property
+    def droplet_data(self):
+        """Build DataFrame from row buffer on read (called by UI at ~4Hz)."""
+        with self.data_lock:
+            rows = self._droplet_rows
+        if not rows:
+            return self._empty_droplet_df
+        return pd.DataFrame(rows)
+
+    @droplet_data.setter
+    def droplet_data(self, value):
+        """Allow direct assignment (used by clear_droplet_data)."""
+        if isinstance(value, pd.DataFrame) and value.empty:
+            with self.data_lock:
+                self._droplet_rows = []
+        self._empty_droplet_df = value
 
     def save_droplet_data_log(self, filename="droplet_log.csv"):
         self.droplet_data.to_csv(filename, index=False)

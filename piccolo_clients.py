@@ -84,12 +84,15 @@ class ADCStreamClient(BaseClient):
                 if not raw_data:
                     break
             
-                float_data = struct.unpack(f'{n_channels*buffer_size}f', raw_data)
+                # Unpack and convert to numpy arrays outside the lock
+                all_data = np.frombuffer(raw_data, dtype=np.float32)
+                adc1_data = all_data[0*buffer_size:1*buffer_size].copy()
+                adc2_data = all_data[1*buffer_size:2*buffer_size].copy()
+                adc3_data = all_data[2*buffer_size:3*buffer_size].copy()
+                adc4_data = all_data[3*buffer_size:4*buffer_size].copy()
+
+                # Lock only for the reference swap
                 with self.lock:
-                    adc1_data = np.array(float_data[0*buffer_size:1*buffer_size])
-                    adc2_data = np.array(float_data[1*buffer_size:2*buffer_size])
-                    adc3_data = np.array(float_data[2*buffer_size:3*buffer_size])
-                    adc4_data = np.array(float_data[3*buffer_size:4*buffer_size])
                     self.adc1_data = adc1_data
                     self.adc2_data = adc2_data
                     self.adc3_data = adc3_data
