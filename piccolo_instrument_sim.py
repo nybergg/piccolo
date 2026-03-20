@@ -55,21 +55,7 @@ class InstrumentSim:
             "CH4": [-10, 1.0],
         }
 
-        # Detection and sorting state
-        self.set_detection_threshold(0.03)
-        self.sort_gates = {}
-        self.sipm_gain = np.zeros(num_channels)
-        for ch in range(num_channels):
-            self.set_sipm_gain(ch, 0.5)
-
-        # Droplet data buffer
-        self.droplet_data = pd.DataFrame()
-        self.buffer_size = 1000
-
-        # Generation thread state
-        self._running = False
-
-        # FPGA register cache (matching Instrument layout)
+        # FPGA register cache (matching Instrument layout) — must be before set_detection_threshold
         self.fpga_registers = {
             "fads_reset": 0,
             "sort_delay": 100,
@@ -94,6 +80,20 @@ class InstrumentSim:
             self.fpga_registers[f"min_area_thresh[{i}]"] = 0
             self.fpga_registers[f"low_area_thresh[{i}]"] = 1000000
             self.fpga_registers[f"high_area_thresh[{i}]"] = 3437096703
+
+        # Detection and sorting state
+        self.sort_gates = {}
+        self.sipm_gain = np.zeros(num_channels)
+        for ch in range(num_channels):
+            self.set_sipm_gain(ch, 0.5)
+        self.set_detection_threshold(0.03)
+
+        # Droplet data buffer
+        self.droplet_data = pd.DataFrame()
+        self.buffer_size = 1000
+
+        # Generation thread state
+        self._running = False
 
         if self.verbose:
             print("%s: -> open and ready."%self.name)

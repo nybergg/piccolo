@@ -18,8 +18,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import dash_bootstrap_components as dbc
 from flask import Response # For MJPEG streaming
-from pypylon import pylon
-import cv2
+
+# Optional hardware imports
+try:
+    from pypylon import pylon
+    import cv2
+    _CAMERA_LIBS_AVAILABLE = True
+except ImportError:
+    _CAMERA_LIBS_AVAILABLE = False
+    print("Warning: pypylon or OpenCV not installed. Camera support disabled.")
 
 # Piccolo imports
 from piccolo_instrument_sim import InstrumentSim
@@ -29,9 +36,9 @@ print("Successfully imported all modules.")
 
 ################ Configuration ################
 
-SIMULATE = False       # True = use simulated instrument, False = connect to real hardware
+SIMULATE = True        # True = use simulated instrument, False = connect to real hardware
 LAUNCH_RP = True       # True = deploy code and load bitstream on startup (ignored in sim mode)
-CAMERA_AVAILABLE = True
+CAMERA_AVAILABLE = False and _CAMERA_LIBS_AVAILABLE
 SERVER_URL = "http://127.0.0.1:8050/"
 
 ################ Global Variables ################
@@ -221,6 +228,7 @@ app.layout = dbc.Container([
     dcc.Store(id='sorter-state-store', data=False), # Sorter is OFF by default
     dcc.Interval(id='counter-interval-component', interval=1000, n_intervals=0),
     dcc.Interval(id='interval-component', interval=250, n_intervals=0),
+    dbc.Alert("SIMULATION MODE", color="warning", className="text-center mb-0 py-1") if SIMULATE else html.Span(),
     dbc.Row(html.Hr()),
     dbc.Row([
         # Controls Column (Left)
