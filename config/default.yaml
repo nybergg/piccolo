@@ -1,0 +1,30 @@
+# Piccolo Configuration
+# This file centralizes all runtime configuration.
+# Values here replace hardcoded constants scattered across the codebase.
+
+# Mode
+simulate: true          # true = use HardwareSimulator, false = connect to real hardware
+launch_rp: true         # true = deploy code and load bitstream on startup (ignored in sim mode)
+camera_enabled: false   # true = start camera thread (requires pypylon + OpenCV)
+
+# Red Pitaya connection
+# Credentials are loaded from config/rp_login.json (not stored here for security).
+rp_dir: "piccolo_testing"
+rp_script: "piccolo_rp.py"
+
+# Data
+buffer_size: 1000       # Max droplet data rows kept in memory
+adc_samples: 4096       # ADC samples per channel per acquisition
+
+# ADC calibration per channel: [offset, gain]
+calibration:
+  CH1: [-10, 1.0]
+  CH2: [-10, 1.0]
+  CH3: [-10, 1.0]       # Placeholder, adjust as needed
+  CH4: [-10, 1.0]       # Placeholder, adjust as needed
+
+# UI
+server_url: "http://127.0.0.1:8050/"
+server_port: 8050
+update_interval_ms: 250   # Dash graph update interval
+counter_interval_ms: 1000 # Droplet counter update interval
