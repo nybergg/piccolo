@@ -110,8 +110,8 @@ def main():
             camera_manager = CameraManager(verbose=verbose)
             camera_manager.start()
             print("Camera started.")
-        except ImportError:
-            print("Camera libraries not available. Camera disabled.")
+        except ImportError as e:
+            print(f"Camera libraries not available: {e}. Camera disabled.")
         except Exception as e:
             print(f"Camera init failed: {e}. Camera disabled.")
 

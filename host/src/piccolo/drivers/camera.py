@@ -11,12 +11,19 @@ import time
 import numpy as np
 
 # Optional imports — camera support is not required
+_CAMERA_LIBS_AVAILABLE = True
+_CAMERA_IMPORT_ERROR = None
 try:
     from pypylon import pylon
-    import cv2
-    _CAMERA_LIBS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     _CAMERA_LIBS_AVAILABLE = False
+    _CAMERA_IMPORT_ERROR = f"pypylon: {e}"
+
+try:
+    import cv2
+except ImportError as e:
+    _CAMERA_LIBS_AVAILABLE = False
+    _CAMERA_IMPORT_ERROR = f"opencv: {e}"
 
 
 class CameraManager:
@@ -24,7 +31,7 @@ class CameraManager:
 
     def __init__(self, hw_trigger=False, verbose=True):
         if not _CAMERA_LIBS_AVAILABLE:
-            raise ImportError("pypylon and/or OpenCV are not installed. Camera support unavailable.")
+            raise ImportError(f"Camera libraries not available: {_CAMERA_IMPORT_ERROR}")
 
         self.verbose = verbose
         self._hw_trigger = hw_trigger
