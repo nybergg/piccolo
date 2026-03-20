@@ -23,7 +23,7 @@ from piccolo.piccolo_clients import (
     MemoryCommandClient,
     ControlCommandClient
 )
-from piccolo.cobalt_skyra import LaserBox
+from piccolo.drivers.laser import LaserBox
 
 
 class HardwareController(InstrumentController):

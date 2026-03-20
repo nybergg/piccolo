@@ -4,15 +4,14 @@ Piccolo UI app factory — creates and configures the Dash application.
 Handles app initialization, MJPEG streaming route, and startup/shutdown.
 """
 
+import os
 import sys
 import time
 import signal
 import logging
-import threading
 import webbrowser
 from threading import Timer
 
-import numpy as np
 import dash
 import plotly.io as pio
 import dash_bootstrap_components as dbc
@@ -20,13 +19,6 @@ import dash_bootstrap_components as dbc
 from piccolo.controllers import HardwareSimulator, HardwareController
 from piccolo.ui.layout import build_layout
 from piccolo.ui.callbacks import register_callbacks
-
-# Optional camera imports
-try:
-    import cv2
-    _CV2_AVAILABLE = True
-except ImportError:
-    _CV2_AVAILABLE = False
 
 
 # ---- Configuration ----
@@ -36,10 +28,12 @@ CAMERA_AVAILABLE = False  # Set True only if camera libs + hardware present
 SERVER_URL = "http://127.0.0.1:8050/"
 
 
-def create_app(controller, camera_available=False):
+def create_app(controller, camera_manager=None):
     """Create and configure the Dash app."""
     pio.templates.default = "plotly_dark"
     external_stylesheets = [dbc.themes.CYBORG, dbc.icons.BOOTSTRAP, '/assets/custom.css']
+
+    camera_available = camera_manager is not None
 
     app = dash.Dash(__name__,
                     title="Piccolo UI",
@@ -48,40 +42,37 @@ def create_app(controller, camera_available=False):
                     update_title=None)
 
     app.layout = build_layout(camera_available=camera_available, simulate=SIMULATE)
-    register_callbacks(app, controller, camera_manager=None)
+    register_callbacks(app, controller, camera_manager=camera_manager)
 
-    # MJPEG streaming route (placeholder — camera support added in Phase 5)
-    if camera_available and _CV2_AVAILABLE:
-        _register_video_route(app)
+    if camera_available:
+        _register_video_route(app, camera_manager)
 
     return app
 
 
 def _find_assets_folder():
     """Locate the assets folder relative to the ui package."""
-    import os
     assets_path = os.path.join(os.path.dirname(__file__), 'assets')
     if os.path.isdir(assets_path):
         return assets_path
     return None
 
 
-def _register_video_route(app):
+def _register_video_route(app, camera_manager):
     """Register the /video_feed MJPEG streaming endpoint."""
     from flask import Response
 
-    def generate_placeholder():
+    def generate_frames():
         while True:
             time.sleep(1/30)
-            placeholder = np.zeros((50, 50, 3), dtype=np.uint8)
-            ret, jpeg = cv2.imencode('.jpg', placeholder)
-            if ret:
+            frame = camera_manager.get_latest_frame()
+            if frame:
                 yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
     @app.server.route('/video_feed')
     def video_feed():
-        return Response(generate_placeholder(),
+        return Response(generate_frames(),
                         mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
@@ -100,12 +91,28 @@ def main():
         controller.start()
         time.sleep(1)
 
+    # Create camera manager (if enabled)
+    camera_manager = None
+    if CAMERA_AVAILABLE:
+        try:
+            from piccolo.drivers.camera import CameraManager
+            camera_manager = CameraManager()
+            camera_manager.start()
+            print("Camera started.")
+        except ImportError:
+            print("Camera libraries not available. Camera disabled.")
+        except Exception as e:
+            print(f"Camera init failed: {e}. Camera disabled.")
+
     # Create app
-    app = create_app(controller, camera_available=CAMERA_AVAILABLE)
+    app = create_app(controller, camera_manager=camera_manager)
 
     # Shutdown handler
     def cleanup():
         print("\nInitiating shutdown sequence...")
+        if camera_manager:
+            print("Stopping camera...")
+            camera_manager.stop()
         print("Shutting down instrument...")
         try:
             controller.stop()
