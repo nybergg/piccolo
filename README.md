@@ -65,21 +65,21 @@ The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connect
  Host PC                              Red Pitaya
 ┌─────────────────────────────┐      ┌──────────────────────────┐
 │                             │      │                          │
-│  ┌───────────────────────┐  │      │  firmware/arm/           │
-│  │  UI                   │  │      │  piccolo_rp.py           │
-│  │  layout + callbacks   │  │      │  - mmap FPGA registers   │
-│  └──────────┬────────────┘  │      │  - TCP servers (:5001-3) │
-│             │               │      │                          │
-│  ┌──────────▼────────────┐  │      └────────────▲─────────────┘
-│  │  Controller           │  │                   │ TCP
-│  │  HardwareController   │  │  ┌────────────────┘
-│  │    or                 │  │  │
-│  │  HardwareSimulator    │  │  │   ┌──────────────────────────┐
-│  └──┬─────────┬──────────┘  │  │   │  FPGA                    │
-│     │         │             │  │   │  - 4-ch ADC acquisition   │
-│  ┌──▼───┐ ┌──▼──────────┐  │  │   │  - droplet detection     │
-│  │Laser │ │TCP Clients   │──┼──┘   │  - sort trigger output   │
-│  │Camera│ │(ADC, Memory, │  │      └──────────────────────────┘
+│  ┌───────────────────────┐  │      │  ARM (piccolo_rp.py)     │
+│  │  UI                   │  │      │  - mmap FPGA registers   │
+│  │  layout + callbacks   │  │      │  - TCP servers (:5001-3) │
+│  └──────────┬────────────┘  │      │         ▲                │
+│             │               │      │         │ mmap /dev/mem  │
+│  ┌──────────▼────────────┐  │      │  ┌──────▼─────────────┐  │
+│  │  Controller           │  │      │  │  FPGA              │  │
+│  │  HardwareController   │  │      │  │  - 4-ch ADC        │  │
+│  │    or                 │  │      │  │  - droplet detect  │  │
+│  │  HardwareSimulator    │  │      │  │  - sort trigger    │  │
+│  └──┬─────────┬──────────┘  │      │  └────────────────────┘  │
+│     │         │             │      │                          │
+│  ┌──▼───┐ ┌──▼───────────┐  │      └────────────▲─────────────┘
+│  │Laser │ │TCP Clients   │──┼─── TCP ───────────┘
+│  │Camera│ │(ADC, Memory, │  │
 │  │      │ │ Command)     │  │
 │  └──────┘ └──────────────┘  │
 │                             │
