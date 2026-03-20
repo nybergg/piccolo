@@ -29,8 +29,7 @@ except ImportError:
     print("Warning: pypylon or OpenCV not installed. Camera support disabled.")
 
 # Piccolo imports
-from piccolo.piccolo_instrument_sim import InstrumentSim
-from piccolo.piccolo_instrument import Instrument
+from piccolo.controllers import HardwareSimulator, HardwareController
 from piccolo.conversion import convert_display_to_raw
 print("Successfully imported all modules.")
 
@@ -48,15 +47,15 @@ lock = threading.Lock()
 instrument = None
 
 if SIMULATE:
-    instrument = InstrumentSim()
-    instrument.start_generating()
+    instrument = HardwareSimulator()
+    instrument.start()
 else:
-    instrument = Instrument(rp_dir="piccolo_testing", verbose=True)
+    instrument = HardwareController(rp_dir="piccolo_testing", verbose=True)
     if LAUNCH_RP:
         print("Launching Piccolo RP... please wait.")
         instrument.launch_piccolo_rp()
         time.sleep(10)
-    instrument.start_clients()
+    instrument.start()
     time.sleep(1)
 
 # Initiate Camera Variables
