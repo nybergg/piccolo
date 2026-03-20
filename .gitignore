@@ -8,7 +8,6 @@ config/rp_login_4CH.json
 
 # Claude Code
 .claude/
-RESTRUCTURE_PLAN.md
 
 # Python
 __pycache__/

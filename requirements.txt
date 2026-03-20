@@ -1,5 +1,0 @@
-# Dependencies are now managed in host/pyproject.toml
-# Install with: cd host && pip install -e .
-# For camera support: pip install -e ".[camera]"
-# For development: pip install -e ".[dev]"
--e host/
