@@ -1,17 +1,26 @@
-fpga/project/vivado.jou
-fpga/project/vivado.log
-fpga/project/vivado_pid20932.str
-fpga/project/vivado_pid20932.str
-fpga/project/vivado.log
-fpga/project/redpitaya.cache/wt/gui_handlers.wdf
-fpga/project/redpitaya.cache/wt/java_command_handlers.wdf
-fpga/project/redpitaya.cache/wt/webtalk_pa.xml
-fpga/project/vivado.log
-tests
-redpitaya/rp_login_desk.json
-redpitaya/rp_login_lab.json
-redpitaya/rp_login_4CH.json
-concurrency_tools.py
-logs
-__pycache__
+# Vivado project files
+firmware/fpga/project/
+
+# Red Pitaya credentials (sensitive)
+config/rp_login_desk.json
+config/rp_login_lab.json
+config/rp_login_4CH.json
+
+# Claude Code
+.claude/
+RESTRUCTURE_PLAN.md
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
 venv/
+
+# Logs
+logs/
+
+# Legacy
+concurrency_tools.py
+/tests

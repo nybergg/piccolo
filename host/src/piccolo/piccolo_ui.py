@@ -29,8 +29,8 @@ except ImportError:
     print("Warning: pypylon or OpenCV not installed. Camera support disabled.")
 
 # Piccolo imports
-from piccolo_instrument_sim import InstrumentSim
-from piccolo_instrument import Instrument
+from piccolo.piccolo_instrument_sim import InstrumentSim
+from piccolo.piccolo_instrument import Instrument
 print("Successfully imported all modules.")
 
 

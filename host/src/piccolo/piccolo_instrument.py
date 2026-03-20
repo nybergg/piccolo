@@ -11,18 +11,18 @@ import posixpath
 import pandas as pd
 
 # Import piccolo clients
-from piccolo_clients import (
+from piccolo.piccolo_clients import (
     ADCStreamClient,
     MemoryStreamClient,
     MemoryCommandClient,
     ControlCommandClient
 )
-from cobalt_skyra import LaserBox
+from piccolo.cobalt_skyra import LaserBox
 
 class Instrument:
     def __init__(self, 
                  local_script="piccolo_rp.py",
-                 local_dir="redpitaya", 
+                 local_dir="firmware/arm",
                  script_args=None, 
                  rp_dir="piccolo_testing",
                  verbose=False,
@@ -95,7 +95,7 @@ class Instrument:
         """ Get the local information for the Red Pitaya and run the script on it"""
         
         # Load the Red Pitaya login information from a JSON file
-        with open("redpitaya/rp_login_4CH.json", "r") as f:
+        with open("config/rp_login_4CH.json", "r") as f:
             rp_login_json = json.load(f)
 
         self.ip = rp_login_json["ip"]
@@ -155,6 +155,13 @@ class Instrument:
 
                     if self.very_verbose:
                         print(f"Local file {local_path} transferred to Red Pitaya {remote_path}")
+
+            # Also transfer the shared mmap config
+            mmap_path = os.path.join("config", "piccolo_mmap.json")
+            if os.path.exists(mmap_path):
+                scp.put(mmap_path, posixpath.join(self.rp_dir, "piccolo_mmap.json"))
+                if self.very_verbose:
+                    print(f"Transferred {mmap_path} to Red Pitaya")
 
         # Debug
         if self.verbose:
@@ -223,7 +230,7 @@ class Instrument:
     def setup_laser(self):
         """Initialize the laser box."""
         try:
-            with open("laser_config.json", "r") as f:
+            with open("config/laser_config.json", "r") as f:
                 config = json.load(f)
 
             name2num_and_max_power_mw = {
