@@ -27,8 +27,8 @@ pip install -e ".[camera]"
 # Simulation mode (no hardware required)
 python -m piccolo --simulate
 
-# Real hardware
-python -m piccolo --no-simulate --rp-login config/rp_login.json
+# Real hardware (path is relative to where you run from)
+python -m piccolo --no-simulate --rp-login ../config/rp_login.json
 
 # All options
 python -m piccolo --help

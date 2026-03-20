@@ -78,7 +78,7 @@ class TestRpLoginMerge:
         assert cfg.rp_username == "root"
         assert cfg.rp_password == "secret"
 
-    def test_yaml_values_take_precedence_over_rp_login(self, tmp_path):
+    def test_rp_login_overrides_yaml(self, tmp_path):
         yaml_path = tmp_path / "config.yaml"
         yaml_path.write_text(yaml.dump({
             "rp_ip": "10.0.0.1",
@@ -90,11 +90,11 @@ class TestRpLoginMerge:
         }))
 
         cfg = PiccoloConfig.load(str(yaml_path), rp_login_path=str(rp_path))
-        # YAML value should win because setdefault only sets if not already present
-        assert cfg.rp_ip == "10.0.0.1"
+        # --rp-login should override YAML values
+        assert cfg.rp_ip == "192.168.1.100"
 
-    def test_missing_rp_login_no_error(self, tmp_path):
+    def test_missing_rp_login_raises(self, tmp_path):
         yaml_path = tmp_path / "config.yaml"
         yaml_path.write_text(yaml.dump({"simulate": True}))
-        cfg = PiccoloConfig.load(str(yaml_path), rp_login_path="/nonexistent.json")
-        assert cfg.rp_ip == ""
+        with pytest.raises(FileNotFoundError):
+            PiccoloConfig.load(str(yaml_path), rp_login_path="/nonexistent.json")

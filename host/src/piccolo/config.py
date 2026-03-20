@@ -51,12 +51,18 @@ class PiccoloConfig:
                 config_data = yaml.safe_load(f) or {}
 
         # Load RP login credentials if provided
-        if rp_login_path and os.path.exists(rp_login_path):
+        if rp_login_path:
+            if not os.path.exists(rp_login_path):
+                raise FileNotFoundError(
+                    f"RP login file not found: {rp_login_path}\n"
+                    f"  (resolved to: {os.path.abspath(rp_login_path)})\n"
+                    f"  Hint: if running from host/, try --rp-login ../config/rp_login.json"
+                )
             with open(rp_login_path, "r") as f:
                 rp_login = json.load(f)
-            config_data.setdefault("rp_ip", rp_login.get("ip", ""))
-            config_data.setdefault("rp_username", rp_login.get("username", "root"))
-            config_data.setdefault("rp_password", rp_login.get("password", ""))
+            config_data["rp_ip"] = rp_login.get("ip", "")
+            config_data["rp_username"] = rp_login.get("username", "root")
+            config_data["rp_password"] = rp_login.get("password", "")
 
         # Filter to only known fields
         known_fields = {f.name for f in cls.__dataclass_fields__.values()}
