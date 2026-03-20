@@ -4,7 +4,6 @@ import numpy as np
 import sys
 import threading
 import time
-import pandas as pd
 import signal
 import webbrowser
 import re
@@ -28,22 +27,24 @@ from piccolo_instrument import Instrument
 print("Successfully imported all modules.")
 
 
-################ Global Variables ################
+################ Configuration ################
 
-# Initiate Instrument/Sim and Lock
-simulate = False
-launch_rp = True
-lock = threading.Lock() # For instrument data
-instrument = None
-camera_available = True
+SIMULATE = False       # True = use simulated instrument, False = connect to real hardware
+LAUNCH_RP = True       # True = deploy code and load bitstream on startup (ignored in sim mode)
+CAMERA_AVAILABLE = True
 SERVER_URL = "http://127.0.0.1:8050/"
 
-if simulate:
+################ Global Variables ################
+
+lock = threading.Lock()
+instrument = None
+
+if SIMULATE:
     instrument = InstrumentSim()
     instrument.start_generating()
 else:
     instrument = Instrument(rp_dir="piccolo_testing", verbose=True)
-    if launch_rp:
+    if LAUNCH_RP:
         print("Launching Piccolo RP... please wait.")
         instrument.launch_piccolo_rp()
         time.sleep(10)
@@ -60,7 +61,7 @@ camera = None # Global pypylon camera object
 camera_config = {'hw_trigger': False} # Global config for camera thread
 
 # Create an initial placeholder image for the camera feed
-if camera_available:
+if CAMERA_AVAILABLE:
     placeholder_img = np.zeros((240, 320, 3), dtype=np.uint8) # Small placeholder
     cv2.putText(placeholder_img, "Waiting for Camera...", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 1)
     ret_init, jpeg_init = cv2.imencode('.jpg', placeholder_img)
@@ -70,7 +71,7 @@ if camera_available:
 # Camera Thread Function
 def camera_thread_func():
     global latest_frame_jpeg, camera_running, camera, camera_lock, camera_config
-    if not camera_available:
+    if not CAMERA_AVAILABLE:
         print("Camera thread not starting: pypylon or OpenCV missing.")
         return
 
@@ -193,7 +194,7 @@ def generate_camera_frames():
 
 @app.server.route('/video_feed')
 def video_feed():
-    if not camera_available:
+    if not CAMERA_AVAILABLE:
         return "Camera support is not available (missing pypylon or OpenCV).", 503
     return Response(generate_camera_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -392,17 +393,17 @@ app.layout = dbc.Container([
         ], md=6),
 
         # Camera Column (Right)
-        dbc.Col([ # This column will now also host the scatter plot settings
+        dbc.Col([
             html.H5("Camera Controls"),
             html.Img(
-                src="/video_feed" if camera_available else "",
+                src="/video_feed" if CAMERA_AVAILABLE else "",
                 id='camera-feed-img',
                 style={
                     'width': '100%',
                     'border': '1px solid #555',
-                    'display': 'block' if camera_available else 'none',
+                    'display': 'block' if CAMERA_AVAILABLE else 'none',
                     'minHeight': '240px', # Set a minimum height
-                    'backgroundColor': '#000' if camera_available else 'transparent', # Black background while loading/if small
+                    'backgroundColor': '#000' if CAMERA_AVAILABLE else 'transparent', # Black background while loading/if small
                     'aspectRatio': '4/3', # Try to maintain aspect ratio
                     'objectFit': 'contain', # Scale image to fit within bounds, maintaining aspect ratio
                     'maxHeight': '75vh' # Constrain camera height
@@ -410,7 +411,7 @@ app.layout = dbc.Container([
             ),
             html.P(
                 "Camera disabled: pypylon or OpenCV not installed.",
-                style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not camera_available else 'none'}
+                style={'textAlign': 'center', 'fontSize': 'small', 'display': 'block' if not CAMERA_AVAILABLE else 'none'}
             ),
             html.Div([
                 html.Hr(),
@@ -425,7 +426,7 @@ app.layout = dbc.Container([
                 html.Label("Camera Trigger Delay (µs):"),
                 dcc.Slider(id='camera-trigger-delay-slider', min=0, max=1000, step=1, value=0, marks=None, tooltip={"placement": "bottom", "always_visible": True}),
                 html.Div(id='camera-settings-status', className="mt-2")
-            ], style={'display': 'block' if camera_available else 'none'}),
+            ], style={'display': 'block' if CAMERA_AVAILABLE else 'none'}),
         ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
     ]),
 ], fluid=True)
@@ -482,17 +483,12 @@ def update_graphs(n, x_key_1, y_key_1, x_scale_1, y_scale_1, x_min_1, x_max_1, y
     if len(timers) > 1: s_per_update = np.mean(np.diff(timers))
 
     with lock:
-        if simulate:
-            # Assuming sim provides 4 channels now
-            adc1, adc2, adc3, adc4 = instrument.signal[0], instrument.signal[1], instrument.signal[2], instrument.signal[3]
-            df = instrument.droplet_data
-        else:
-            adc1 = instrument.adc1_data
-            adc2 = instrument.adc2_data
-            adc3 = instrument.adc3_data
-            adc4 = instrument.adc4_data
-            df = instrument.droplet_data
-            sort_gates = instrument.get_sort_gates()
+        adc1 = instrument.adc1_data
+        adc2 = instrument.adc2_data
+        adc3 = instrument.adc3_data
+        adc4 = instrument.adc4_data
+        df = instrument.droplet_data
+        sort_gates = instrument.get_sort_gates()
 
     time_axis = np.linspace(0, 50, 4096)
 
@@ -777,11 +773,7 @@ def update_camera_settings(exposure_us, delay_us):
         
         try:
             if 'camera-exposure-slider' in triggered_ids:
-                current_val = camera.ExposureTime.GetValue()
-                print(f"DEBUG: Setting Exposure. Current: {current_val:.1f}, New: {exposure_us}")
                 camera.ExposureTime.SetValue(float(exposure_us))
-                new_val = camera.ExposureTime.GetValue()
-                print(f"DEBUG: Exposure set. Value read back: {new_val:.1f}")
                 msgs.append(f"Exposure: {exposure_us} µs.")
             
             if 'camera-trigger-delay-slider' in triggered_ids:
@@ -801,6 +793,7 @@ def update_camera_settings(exposure_us, delay_us):
         return dbc.Alert(" ".join(msgs), color="success", duration=2000)
 
     return dash.no_update
+
 @app.callback(
     [Output('detection-button', 'children'),
      Output('detection-button', 'color'),
@@ -1110,7 +1103,7 @@ def cleanup():
     global camera_running, cam_thread
     print("\nInitiating shutdown sequence...")
     # Stop camera thread first
-    if camera_available and cam_thread:
+    if CAMERA_AVAILABLE and cam_thread:
         print("Stopping camera thread...")
         camera_running = False
         cam_thread.join(timeout=7) # Wait for camera thread to finish
@@ -1122,10 +1115,12 @@ def cleanup():
     # Then instrument
     print("Shutting down instrument...")
     with lock:
-        if instrument and hasattr(instrument, 'stop') and callable(instrument.stop):
-            try: instrument.stop(); print("Instrument stop called.")
-            except Exception as e: print(f"Error during instrument stop: {e}")
-        else: print("Instrument has no 'stop' method or is not initialized.")
+        if instrument:
+            try:
+                instrument.stop()
+                print("Instrument stop called.")
+            except Exception as e:
+                print(f"Error during instrument stop: {e}")
     print("Cleanup finished.")
 
 
@@ -1148,7 +1143,7 @@ if __name__ == '__main__':
     log.setLevel(logging.ERROR)
     print("Werkzeug (HTTP Server) logging is set to ERROR level.")
 
-    if camera_available:
+    if CAMERA_AVAILABLE:
         print("Starting camera thread...")
         camera_running = True
         cam_thread = threading.Thread(target=camera_thread_func, daemon=True)
