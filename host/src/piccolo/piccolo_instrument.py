@@ -10,6 +10,8 @@ import time
 import posixpath
 import pandas as pd
 
+from piccolo.conversion import raw_to_volts, volts_to_raw, convert_registers
+
 # Import piccolo clients
 from piccolo.piccolo_clients import (
     ADCStreamClient,
@@ -298,57 +300,8 @@ class Instrument:
         return self.fpga_registers
 
     def get_fpga_registers_converted(self):
-        """
-        Return a dictionary of FPGA registers with human-readable values and units.
-        Returns a dictionary where each value is a tuple: (converted_value, unit_string).
-        """
-        display_registers = {}
-        raw_registers = self.get_fpga_registers()
-
-        for name, value in raw_registers.items():
-            # Default: no conversion
-            display_value = value
-            unit = ""
-
-            # Try to extract channel number
-            ch_match = re.search(r'\[(\d)\]', name)
-            ch = int(ch_match.group(1)) if ch_match else None
-
-            try:
-                # Ensure value is a number for conversions
-                numeric_value = int(value)
-
-                if ch is not None:
-                    if 'intensity_thresh' in name:
-                        display_value = self.convert_raw_to_volts(numeric_value, ch)
-                        unit = "V"
-                    elif 'area_thresh' in name:
-                        # Based on cur_droplet_area conversion
-                        display_value = self.convert_raw_to_volts(numeric_value, ch) / 1000.0
-                        unit = "V·ms"
-                    elif 'width_thresh' in name:
-                        # Based on cur_droplet_width conversion, raw is in us
-                        display_value = numeric_value / 1000.0
-                        unit = "ms"
-                elif 'sort_delay' in name or 'sort_duration' in name or 'camera_trig_delay' in name or 'camera_trig_duration' in name:
-                    # Assuming these are in microseconds
-                    display_value = numeric_value / 1000.0
-                    unit = "ms"
-                elif name == 'droplet_frequency':
-                    if numeric_value != 0:
-                        display_value = int(1e6 / numeric_value)  # Convert from us period to Hz frequency
-                        unit = "Hz"
-                    else:
-                        display_value = 0
-                    unit = "Hz"
-            except (ValueError, TypeError):
-                # Value is not a number (e.g., binary string from get_var), keep as is
-                display_value = value
-                unit = ""
-
-            display_registers[name] = (display_value, unit)
-
-        return display_registers
+        """Return FPGA registers with human-readable values and units."""
+        return convert_registers(self.get_fpga_registers(), self.calibration_values)
 
     def enable_sorter(self, enable: bool):
         """Enable or disable the droplet sorter on the FPGA."""
@@ -555,23 +508,11 @@ class Instrument:
     
     def convert_raw_to_volts(self, raw_value, ch):
         """Convert raw ADC value to volts using calibration values."""
-        vp = 20.0  # +/-20V range (40Vpp)
-        adc_max = 8192.0  # Max ADC value
-        ch_key = f"CH{ch+1}"
-        offset, gain = self.calibration_values[ch_key]
-        volt_value = (raw_value - offset) * gain / adc_max * vp
-        
-        return volt_value
-    
+        return raw_to_volts(raw_value, ch, self.calibration_values)
+
     def convert_volts_to_raw(self, volt_value, ch):
         """Convert volts to raw ADC value using calibration values."""
-        vp = 20.0  # +/-20V range (40Vpp)
-        adc_max = 8192.0  # Max ADC value
-        ch_key = f"CH{ch+1}"
-        offset, gain = self.calibration_values[ch_key]
-        raw_value = (volt_value * adc_max / vp) / gain + offset
-        
-        return int(raw_value)
+        return volts_to_raw(volt_value, ch, self.calibration_values)
     
     def stop(self):
         """Stops all clients and the remote server process."""

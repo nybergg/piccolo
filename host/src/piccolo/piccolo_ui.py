@@ -31,6 +31,7 @@ except ImportError:
 # Piccolo imports
 from piccolo.piccolo_instrument_sim import InstrumentSim
 from piccolo.piccolo_instrument import Instrument
+from piccolo.conversion import convert_display_to_raw
 print("Successfully imported all modules.")
 
 
@@ -1063,34 +1064,13 @@ def set_fpga_register(n_clicks, values, ids):
 
     if value_to_set_str is not None:
         try:
-            # User inputs the converted value, which should be a number
             value_to_set = float(value_to_set_str)
-
-            # This will be converted back to a raw integer for the FPGA
-            final_value = value_to_set
-
-            # Reverse conversion logic
-            ch_match = re.search(r'\[(\d)\]', register_name)
-            ch = int(ch_match.group(1)) if ch_match else None
 
             with lock:
                 if instrument:
-                    if ch is not None:
-                        if 'intensity_thresh' in register_name:
-                            final_value = instrument.convert_volts_to_raw(value_to_set, ch)
-                        elif 'area_thresh' in register_name:
-                            # User enters V·ms, convert to V, then to raw
-                            volts = value_to_set * 1000.0
-                            final_value = instrument.convert_volts_to_raw(volts, ch)
-                        elif 'width_thresh' in register_name:
-                            # User enters ms, convert to us for raw value
-                            final_value = value_to_set * 1000.0
-                    elif 'sort_delay' in register_name or 'sort_duration' in register_name or 'camera_trig_delay' in register_name or 'camera_trig_duration' in register_name:
-                        # User enters ms, convert to us for raw value
-                        final_value = value_to_set * 1000.0
-
-                    # For non-converted values, final_value remains value_to_set
-                    final_value_int = int(final_value)
+                    final_value_int = convert_display_to_raw(
+                        register_name, value_to_set, instrument.calibration_values
+                    )
                     instrument.set_memory_variable(register_name, final_value_int)
                     msg = f"Success: Set {register_name} to {value_to_set_str} (raw: {final_value_int})"
                     print(msg)

@@ -8,6 +8,8 @@ import pandas as pd
 from scipy.integrate import simpson
 from scipy.signal import find_peaks, peak_widths
 
+from piccolo.conversion import raw_to_volts, volts_to_raw, convert_registers
+
 
 class InstrumentSim:
     def __init__(self,
@@ -349,72 +351,19 @@ class InstrumentSim:
         return self.fpga_registers
 
     def get_fpga_registers_converted(self):
-        """
-        Return a dictionary of FPGA registers with human-readable values and units.
-        Each value is a tuple: (converted_value, unit_string).
-        Matches the Instrument.get_fpga_registers_converted() interface.
-        """
-        display_registers = {}
-        raw_registers = self.get_fpga_registers()
-
-        for name, value in raw_registers.items():
-            display_value = value
-            unit = ""
-
-            ch_match = re.search(r'\[(\d)\]', name)
-            ch = int(ch_match.group(1)) if ch_match else None
-
-            try:
-                numeric_value = int(value)
-
-                if ch is not None:
-                    if 'intensity_thresh' in name:
-                        display_value = self.convert_raw_to_volts(numeric_value, ch)
-                        unit = "V"
-                    elif 'area_thresh' in name:
-                        display_value = self.convert_raw_to_volts(numeric_value, ch) / 1000.0
-                        unit = "V·ms"
-                    elif 'width_thresh' in name:
-                        display_value = numeric_value / 1000.0
-                        unit = "ms"
-                elif 'sort_delay' in name or 'sort_duration' in name or 'camera_trig_delay' in name or 'camera_trig_duration' in name:
-                    display_value = numeric_value / 1000.0
-                    unit = "ms"
-                elif name == 'droplet_frequency':
-                    if numeric_value != 0:
-                        display_value = int(1e6 / numeric_value)
-                        unit = "Hz"
-                    else:
-                        display_value = 0
-                        unit = "Hz"
-            except (ValueError, TypeError):
-                display_value = value
-                unit = ""
-
-            display_registers[name] = (display_value, unit)
-
-        return display_registers
+        """Return FPGA registers with human-readable values and units."""
+        return convert_registers(self.get_fpga_registers(), self.calibration_values)
 
 
     ################ Unit Conversion ################
 
     def convert_raw_to_volts(self, raw_value, ch):
         """Convert raw ADC value to volts using calibration values."""
-        vp = 20.0
-        adc_max = 8192.0
-        ch_key = f"CH{ch+1}"
-        offset, gain = self.calibration_values[ch_key]
-        volt_value = (raw_value - offset) * gain / adc_max * vp
-        return volt_value
+        return raw_to_volts(raw_value, ch, self.calibration_values)
 
     def convert_volts_to_raw(self, volt_value, ch):
         """Convert volts to raw ADC value using calibration values."""
-        vp = 20.0
-        adc_max = 8192.0
-        ch_key = f"CH{ch+1}"
-        offset, gain = self.calibration_values[ch_key]
-        raw_value = (volt_value * adc_max / vp) / gain + offset
-        return int(raw_value)
+        return volts_to_raw(volt_value, ch, self.calibration_values)
 
 
     ################ Data Logging ################
