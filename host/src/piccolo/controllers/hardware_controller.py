@@ -160,11 +160,21 @@ class HardwareController(InstrumentController):
                 if self.very_verbose:
                     print(f"Transferred {mmap_path} to Red Pitaya")
 
+            # Transfer the FPGA bitstream
+            bitstream_local = os.path.join("..", "firmware", "fpga", "piccolo.bit.bin")
+            bitstream_remote = posixpath.join(self.rp_dir, "piccolo.bit.bin")
+            if os.path.exists(bitstream_local):
+                scp.put(bitstream_local, bitstream_remote)
+                if self.verbose:
+                    print(f"Transferred bitstream to Red Pitaya: {bitstream_remote}")
+            else:
+                print(f"WARNING: Bitstream not found at {os.path.abspath(bitstream_local)}")
+
         if self.verbose:
             print(f"\nFiles transferred to Red Pitaya.")
 
         # Reset FPGA overlay to known state, then load bitstream
-        bitstream_path = "/root/piccolo.bit.bin"
+        bitstream_path = posixpath.join(self.rp_dir, "piccolo.bit.bin")
 
         print("[HardwareController] Resetting FPGA overlay...")
         _, stdout, stderr = ssh.exec_command("overlay.sh v0.49", timeout=30)
