@@ -169,21 +169,31 @@ class HardwareController(InstrumentController):
         # Reset FPGA overlay to known state, then load bitstream
         bitstream_path = posixpath.join(self.rp_dir, "piccolo.bit.bin")
 
+        cmd_timeout = 30  # seconds to wait for FPGA commands
+
         logger.info("Resetting FPGA overlay...")
-        _, stdout, stderr = ssh.exec_command("/opt/redpitaya/sbin/overlay.sh v0.49", timeout=30)
-        exit_status = stdout.channel.recv_exit_status()
-        if exit_status != 0:
-            logger.warning("overlay.sh v0.49 returned exit code %s. Stderr: %s", exit_status, stderr.read().decode())
-        else:
-            logger.debug("FPGA overlay reset to v0.49.")
+        _, stdout, stderr = ssh.exec_command("/opt/redpitaya/sbin/overlay.sh v0.49", timeout=cmd_timeout)
+        stdout.channel.settimeout(cmd_timeout)
+        try:
+            exit_status = stdout.channel.recv_exit_status()
+            if exit_status != 0:
+                logger.warning("overlay.sh v0.49 returned exit code %s. Stderr: %s", exit_status, stderr.read().decode())
+            else:
+                logger.debug("FPGA overlay reset to v0.49.")
+        except Exception as e:
+            logger.error("overlay.sh timed out after %ss: %s", cmd_timeout, e)
 
         logger.info("Loading bitstream...")
-        _, stdout, stderr = ssh.exec_command(f"/opt/redpitaya/bin/fpgautil -b {bitstream_path}", timeout=30)
-        exit_status = stdout.channel.recv_exit_status()
-        if exit_status == 0:
-            logger.debug("Bitstream loaded from %s", bitstream_path)
-        else:
-            logger.error("fpgautil failed. Exit code: %s. Stderr: %s", exit_status, stderr.read().decode())
+        _, stdout, stderr = ssh.exec_command(f"/opt/redpitaya/bin/fpgautil -b {bitstream_path}", timeout=cmd_timeout)
+        stdout.channel.settimeout(cmd_timeout)
+        try:
+            exit_status = stdout.channel.recv_exit_status()
+            if exit_status == 0:
+                logger.debug("Bitstream loaded from %s", bitstream_path)
+            else:
+                logger.error("fpgautil failed. Exit code: %s. Stderr: %s", exit_status, stderr.read().decode())
+        except Exception as e:
+            logger.error("fpgautil timed out after %ss: %s", cmd_timeout, e)
 
         if not self.debug_flag:
             args = " ".join(self.script_args)
