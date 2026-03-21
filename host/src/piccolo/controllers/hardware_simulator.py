@@ -5,6 +5,8 @@ Generates synthetic droplet signals and analyzes them, providing the same
 interface as HardwareController without requiring any physical hardware.
 """
 
+import logging
+
 import numpy as np
 import threading
 import pandas as pd
@@ -13,6 +15,8 @@ from scipy.integrate import simpson
 from scipy.signal import find_peaks, peak_widths
 
 from piccolo.controllers.controller import InstrumentController
+
+logger = logging.getLogger(__name__)
 
 
 class HardwareSimulator(InstrumentController):
@@ -38,8 +42,7 @@ class HardwareSimulator(InstrumentController):
             if v is not None:
                 setattr(self, k, v)
 
-        if self.verbose:
-            print("%s: opening..." % self.name)
+        logger.debug("%s: opening...", self.name)
 
         self.time_ms = np.arange(0, signal_length) * sampling_interval_ms
         self.signal = [np.zeros_like(self.time_ms)] * num_channels
@@ -102,26 +105,22 @@ class HardwareSimulator(InstrumentController):
         # Generation thread state
         self._running = False
 
-        if self.verbose:
-            print("%s: -> open and ready." % self.name)
+        logger.debug("%s: open and ready.", self.name)
 
     ################ Abstract Method Implementations ################
 
     def set_memory_variable(self, name, value):
         """Set a simulated FPGA register value."""
-        if self.verbose:
-            print(f"[HardwareSimulator] Setting memory variable {name} to {value}")
+        logger.debug("Setting memory variable %s to %s", name, value)
         self.fpga_registers[name] = value
 
     def set_laser_on_state(self, name, state):
         """Stub — no laser hardware in simulation."""
-        if self.verbose:
-            print(f"[HardwareSimulator] Laser '{name}' on state -> {state} (simulated, no-op)")
+        logger.debug("Laser '%s' on state -> %s (simulated, no-op)", name, state)
 
     def set_laser_power(self, name, power_mw):
         """Stub — no laser hardware in simulation."""
-        if self.verbose:
-            print(f"[HardwareSimulator] Laser '{name}' power -> {power_mw} mW (simulated, no-op)")
+        logger.debug("Laser '%s' power -> %s mW (simulated, no-op)", name, power_mw)
 
     def start(self):
         """Start signal generation."""
@@ -134,29 +133,25 @@ class HardwareSimulator(InstrumentController):
     ################ Signal Generation ################
 
     def start_generating(self):
-        if self.verbose:
-            print("\n%s: start generating" % self.name)
+        logger.debug("%s: start generating", self.name)
         self._running = True
         self._thread = threading.Thread(target=self._continue_generating, daemon=True)
         self._thread.start()
 
     def stop_generating(self):
-        if self.verbose:
-            print("\n%s: stop generating" % self.name)
+        logger.debug("%s: stop generating", self.name)
         if self._running:
             self._running = False
             self._thread.join()
 
     def _continue_generating(self):
-        if self.very_verbose:
-            print("\n%s: continue generating" % self.name)
+        logger.debug("%s: continue generating", self.name)
         while self._running:
             self._generate_signal()
             self._analyze_drops()
 
     def _generate_signal(self):
-        if self.very_verbose:
-            print("\n%s: generate signal" % self.name)
+        logger.debug("%s: generate signal", self.name)
         for ch in range(self.num_channels):
             signal = np.zeros_like(self.time_ms)
             for t in self.drop_arrival_time_ms:
@@ -175,17 +170,15 @@ class HardwareSimulator(InstrumentController):
         self.adc3_data = self.signal[2]
         self.adc4_data = self.signal[3]
 
-        if self.very_verbose:
-            print("\n%s: -> done generating signal" % self.name)
+        logger.debug("%s: done generating signal", self.name)
 
     def _analyze_drops(self):
-        if self.very_verbose:
-            print("\n%s: analyzing drops" % self.name)
+        logger.debug("%s: analyzing drops", self.name)
 
         detection_ch = self.fpga_registers.get('detection_channel', 0)
         drops, _ = find_peaks(self.signal[detection_ch], height=self.threshold)
         if np.any(drops) == False:
-            print('No peaks detected in reference channel')
+            logger.debug("No peaks detected in reference channel")
         else:
             widths, _, left_ips, right_ips = peak_widths(self.signal[detection_ch], drops, rel_height=0.5)
             drop_widths = widths * self.sampling_interval_ms
@@ -200,7 +193,7 @@ class HardwareSimulator(InstrumentController):
                 excluded_indices = np.concatenate(
                     (excluded_indices, np.arange(int(left), int(right))))
             if np.any(valid_drop_indices) == False:
-                print('Drops failed validity tests')
+                logger.debug("Drops failed validity tests")
             else:
                 results = {"channel": [], "id": [], "timestamp": [],
                            "width": [], "max signal": [], "auc": [],
@@ -245,8 +238,7 @@ class HardwareSimulator(InstrumentController):
                 self._on_memory_data(final_df)
                 self.fpga_registers['droplet_counter'] += len(final_df)
 
-        if self.very_verbose:
-            print("\n%s: -> done analysing drops" % self.name)
+        logger.debug("%s: done analysing drops", self.name)
 
     def _on_memory_data(self, fpgaoutput):
         self.droplet_data = pd.concat([self.droplet_data, fpgaoutput], ignore_index=True)
@@ -261,6 +253,5 @@ class HardwareSimulator(InstrumentController):
         super().set_detection_threshold(thresh, ch)
 
     def set_sipm_gain(self, ch, gain):
-        if self.verbose:
-            print("%s(ch%s): setting sipm gain = %s" % (self.name, ch, gain))
+        logger.debug("%s(ch%s): setting sipm gain = %s", self.name, ch, gain)
         self.sipm_gain[ch] = gain

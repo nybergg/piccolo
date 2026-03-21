@@ -6,12 +6,15 @@ for conversion, gating, detection, and data logging. Subclasses only need to
 implement hardware-specific methods (set_memory_variable, start, stop, laser).
 """
 
+import logging
 from abc import ABC, abstractmethod
 
 import numpy as np
 import pandas as pd
 
 from piccolo.conversion import raw_to_volts, volts_to_raw, convert_registers
+
+logger = logging.getLogger(__name__)
 
 
 class InstrumentController(ABC):
@@ -65,19 +68,18 @@ class InstrumentController(ABC):
         """Enable or disable the droplet sorter."""
         self.set_memory_variable("sort_enable", 1 if enable else 0)
         status = "enabled" if enable else "disabled"
-        print(f"[{self.__class__.__name__}] Sorter has been {status}.")
+        logger.info("Sorter has been %s.", status)
 
     def enable_detection(self, enable: bool):
         """Enable or disable droplet detection."""
         self.set_memory_variable("detection_enable", 1 if enable else 0)
         status = "enabled" if enable else "disabled"
-        print(f"[{self.__class__.__name__}] Droplet detection has been {status}.")
+        logger.info("Droplet detection has been %s.", status)
 
     def set_detection_threshold(self, thresh, ch=0):
         """Set the detection threshold voltage and channel."""
-        if self.verbose:
-            print(f"[{self.__class__.__name__}] Setting detection channel as {ch}")
-            print(f"[{self.__class__.__name__}] Setting detection threshold to {thresh}")
+        logger.debug("Setting detection channel as %s", ch)
+        logger.debug("Setting detection threshold to %s", thresh)
         thresh_key = f"min_intensity_thresh[{ch}]"
         thresh_raw = self.convert_volts_to_raw(thresh, ch)
         self.set_memory_variable("detection_channel", ch)
@@ -85,8 +87,7 @@ class InstrumentController(ABC):
 
     def set_gate_limits(self, sort_keys, limits):
         """Set sort gate limits from UI box selection."""
-        if self.verbose:
-            print(f"[{self.__class__.__name__}] Received gate limits to set: {limits}")
+        logger.debug("Received gate limits to set: %s", limits)
 
         if not hasattr(self, 'sort_gates'):
             self.sort_gates = {}
@@ -129,8 +130,7 @@ class InstrumentController(ABC):
             self.sort_gates[f"low_{param}_thresh[{ch}]"] = low_val
             self.sort_gates[f"high_{param}_thresh[{ch}]"] = high_val
 
-        if self.verbose:
-            print(f"[{self.__class__.__name__}] Setting cumulative sort gates: {self.sort_gates}")
+        logger.debug("Setting cumulative sort gates: %s", self.sort_gates)
 
         for var, val in self.sort_gates.items():
             self.set_memory_variable(var, int(val))
@@ -162,6 +162,5 @@ class InstrumentController(ABC):
 
     def clear_droplet_data(self):
         """Clears the internal droplet data buffer."""
-        if self.verbose:
-            print(f"[{self.__class__.__name__}] Clearing droplet data buffer.")
+        logger.debug("Clearing droplet data buffer.")
         self.droplet_data = pd.DataFrame()

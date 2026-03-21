@@ -9,7 +9,6 @@ import argparse
 import logging
 import os
 import signal
-import sys
 import time
 import webbrowser
 from threading import Timer
@@ -17,6 +16,8 @@ from threading import Timer
 from piccolo.config import PiccoloConfig
 from piccolo.controllers import HardwareSimulator, HardwareController
 from piccolo.ui.app import create_app
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -66,6 +67,15 @@ def parse_args():
 def main():
     args = parse_args()
 
+    # Configure logging
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(levelname)s | %(name)s | %(message)s",
+    )
+    # Suppress noisy third-party loggers
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
     # Load config
     config = PiccoloConfig.load(args.config, rp_login_path=args.rp_login)
 
@@ -85,18 +95,18 @@ def main():
 
     # Create controller
     if config.simulate:
-        print("Starting in SIMULATION mode.")
+        logger.info("Starting in SIMULATION mode.")
         controller = HardwareSimulator(verbose=verbose)
         controller.start()
     else:
-        print("Starting with REAL HARDWARE.")
+        logger.info("Starting with REAL HARDWARE.")
         controller = HardwareController(
             config=config,
             rp_dir=config.rp_dir,
             verbose=verbose,
         )
         if config.launch_rp:
-            print("Launching Piccolo RP... please wait.")
+            logger.info("Launching Piccolo RP... please wait.")
             controller.launch_piccolo_rp()
             time.sleep(10)
         controller.start()
@@ -109,11 +119,11 @@ def main():
             from piccolo.drivers.camera import CameraManager
             camera_manager = CameraManager(verbose=verbose)
             camera_manager.start()
-            print("Camera started.")
+            logger.info("Camera started.")
         except ImportError as e:
-            print(f"Camera libraries not available: {e}. Camera disabled.")
+            logger.warning("Camera libraries not available: %s. Camera disabled.", e)
         except Exception as e:
-            print(f"Camera init failed: {e}. Camera disabled.")
+            logger.error("Camera init failed: %s. Camera disabled.", e)
 
     # Create app
     app = create_app(controller, camera_manager=camera_manager, simulate=config.simulate)
@@ -126,20 +136,20 @@ def main():
         if _cleaned_up:
             return
         _cleaned_up = True
-        print("\nInitiating shutdown sequence...")
+        logger.info("Initiating shutdown sequence...")
         if camera_manager:
-            print("Stopping camera...")
+            logger.info("Stopping camera...")
             camera_manager.stop()
-        print("Shutting down instrument...")
+        logger.info("Shutting down instrument...")
         try:
             controller.stop()
-            print("Instrument stop called.")
+            logger.info("Instrument stop called.")
         except Exception as e:
-            print(f"Error during instrument stop: {e}")
-        print("Cleanup finished.")
+            logger.error("Error during instrument stop: %s", e)
+        logger.info("Cleanup finished.")
 
     def handle_signal(sig, frame):
-        print(f"\nReceived signal {sig}, shutting down...")
+        logger.info("Received signal %s, shutting down...", sig)
         cleanup()
         # Force-kill the process to ensure Werkzeug doesn't linger
         os._exit(0)
@@ -150,18 +160,15 @@ def main():
     except AttributeError:
         pass
 
-    # Suppress werkzeug logging
-    logging.getLogger('werkzeug').setLevel(logging.ERROR)
-
     # Check laser status
     if hasattr(controller, 'laser_box') and controller.laser_box:
-        print("Laser control is available.")
+        logger.info("Laser control is available.")
     else:
-        print("Laser control is DISABLED.")
+        logger.info("Laser control is DISABLED.")
 
     # Open browser and run
     server_url = f"http://127.0.0.1:{config.server_port}/"
-    print(f"Starting Dash server on {server_url} ... Press Ctrl+C to stop.")
+    logger.info("Starting Dash server on %s ... Press Ctrl+C to stop.", server_url)
     if not args.no_browser:
         Timer(1.5, lambda: webbrowser.open_new_tab(server_url)).start()
 

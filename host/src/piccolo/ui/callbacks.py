@@ -5,6 +5,7 @@ Callbacks are registered via register_callbacks(), which receives the app
 instance and the controller. No module-level globals.
 """
 
+import logging
 import math
 import json
 import re
@@ -18,6 +19,8 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
 from piccolo.conversion import convert_display_to_raw
+
+logger = logging.getLogger(__name__)
 
 
 def register_callbacks(app, controller, camera_manager=None):
@@ -117,7 +120,7 @@ def register_callbacks(app, controller, camera_manager=None):
                     iy = np.clip(iy, 0, bins - 1)
                     density = H[ix, iy]
                 except Exception as e:
-                    print(f"Density/Hist error: {e}")
+                    logger.warning("Density/Hist error: %s", e)
                     density = []
 
             fig = go.Figure(data=go.Scattergl(
@@ -233,11 +236,11 @@ def register_callbacks(app, controller, camera_manager=None):
             try:
                 controller.set_memory_variable("enabled_channels", final_value)
                 msg = f"Success: Enabled channels updated to bitmask {final_value}."
-                print(msg)
+                logger.info(msg)
                 return dbc.Alert(msg, color="success", dismissable=True, duration=4000)
             except Exception as e:
                 msg = f"Error setting enabled channels: {e}"
-                print(msg)
+                logger.error(msg)
                 return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
 
     @app.callback(
@@ -277,7 +280,7 @@ def register_callbacks(app, controller, camera_manager=None):
             try:
                 controller.set_memory_variable("detection_channel", channel)
                 msg = f"Success: Detection channel updated to {channel}."
-                print(msg)
+                logger.info(msg)
                 alert_msg = dbc.Alert(msg, color="success", dismissable=True, duration=4000)
 
                 converted_regs = controller.get_fpga_registers_converted()
@@ -286,11 +289,11 @@ def register_callbacks(app, controller, camera_manager=None):
                 if thresh_key in converted_regs:
                     new_slider_value = converted_regs[thresh_key][0]
                 else:
-                    print(f"Warning: Could not find {thresh_key} in converted registers to update slider.")
+                    logger.warning("Could not find %s in converted registers to update slider.", thresh_key)
 
             except Exception as e:
                 msg = f"Error updating detection channel: {e}"
-                print(msg)
+                logger.error(msg)
                 alert_msg = dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
 
         return alert_msg, new_slider_value
@@ -336,7 +339,7 @@ def register_callbacks(app, controller, camera_manager=None):
 
         except Exception as e:
             msg = f"Error setting camera parameter: {e}"
-            print(msg)
+            logger.error(msg)
             return dbc.Alert(msg, color="danger", duration=4000)
 
         if msgs:
@@ -425,7 +428,7 @@ def register_callbacks(app, controller, camera_manager=None):
             new_box = {"x0": [x_range[0]], "y0": [y_range[0]], "x1": [x_range[1]], "y1": [y_range[1]],
                        "x_key": current_sort_keys[0], "y_key": current_sort_keys[1]}
 
-            print(f"New selection. Keys={current_sort_keys}. Box={new_box}")
+            logger.info("New gate selection. Keys=%s. Box=%s", current_sort_keys, new_box)
             with lock:
                 controller.set_gate_limits(sort_keys=current_sort_keys, limits=new_box)
             return new_box
@@ -502,7 +505,7 @@ def register_callbacks(app, controller, camera_manager=None):
             except Exception as e:
                 msg = f"Error performing action: {e}"
                 color = "danger"
-        print(msg)
+        logger.info(msg)
         return dbc.Alert(msg, color=color, dismissable=True, duration=4000)
 
     # ------------------------------------------------------------------
@@ -529,7 +532,7 @@ def register_callbacks(app, controller, camera_manager=None):
                 sorted_str = f"{sorted_droplet_count:,}" if isinstance(sorted_droplet_count, int) else str(sorted_droplet_count)
                 freq_str = f"{droplet_freq:,} Hz" if isinstance(droplet_freq, (int, float)) else str(droplet_freq)
             except Exception as e:
-                print(f"Could not update counters from FPGA: {e}")
+                logger.error("Could not update counters from FPGA: %s", e)
                 count_str, sorted_str, freq_str = "Error", "Error", "Error"
 
         return count_str, sorted_str, freq_str
@@ -613,12 +616,12 @@ def register_callbacks(app, controller, camera_manager=None):
                     )
                     controller.set_memory_variable(register_name, final_value_int)
                     msg = f"Success: Set {register_name} to {value_to_set_str} (raw: {final_value_int})"
-                    print(msg)
+                    logger.info(msg)
                     return dbc.Alert(msg, color="success", dismissable=True, duration=4000)
 
             except (ValueError, TypeError) as e:
                 msg = f"Error: Invalid value for {register_name}: '{value_to_set_str}'. Must be a number. ({e})"
-                print(msg)
+                logger.error(msg)
                 return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
 
         return dash.no_update

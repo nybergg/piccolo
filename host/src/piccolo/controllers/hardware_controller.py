@@ -5,6 +5,7 @@ Manages Red Pitaya connection (SSH/SCP), TCP clients for data streaming,
 and Cobalt Skyra laser box via serial.
 """
 
+import logging
 import os
 import json
 import paramiko
@@ -24,6 +25,8 @@ from piccolo.piccolo_clients import (
     ControlCommandClient
 )
 from piccolo.drivers.laser import LaserBox
+
+logger = logging.getLogger(__name__)
 
 
 class HardwareController(InstrumentController):
@@ -112,12 +115,8 @@ class HardwareController(InstrumentController):
                 "Red Pitaya IP not set. Provide --rp-login or set rp_ip in config."
             )
 
-        if self.verbose:
-            print("\nRed Pitaya login information loaded successfully")
-        if self.very_verbose:
-            print(f"IP: {self.ip}")
-            print(f"Username: {self.username}")
-            print(f"Password: {self.password}")
+        logger.debug("Red Pitaya login information loaded successfully")
+        logger.debug("IP: %s, Username: %s", self.ip, self.username)
 
     def _load_calibration(self, config):
         """Load ADC calibration values from config."""
@@ -130,8 +129,7 @@ class HardwareController(InstrumentController):
                 "CH3": [-10, 1.0],
                 "CH4": [-10, 1.0],
             }
-        if self.verbose:
-            print("\nRed Pitaya calibration values loaded successfully")
+        logger.debug("Red Pitaya calibration values loaded successfully")
 
     def launch_piccolo_rp(self):
         """Deploy code to the Red Pitaya and launch the server process."""
@@ -140,8 +138,7 @@ class HardwareController(InstrumentController):
         ssh.connect(self.ip, username=self.username, password=self.password)
         ssh.exec_command(f"mkdir -p {self.rp_dir}")
 
-        if self.verbose:
-            print("\nConnected to Red Pitaya successfully")
+        logger.debug("Connected to Red Pitaya successfully")
 
         # Transfer local directory to the Red Pitaya
         with SCPClient(ssh.get_transport()) as scp:
@@ -150,48 +147,43 @@ class HardwareController(InstrumentController):
                     local_path = os.path.join(root, file)
                     remote_path = posixpath.join(self.rp_dir, file)
                     scp.put(local_path, remote_path)
-                    if self.very_verbose:
-                        print(f"Local file {local_path} transferred to Red Pitaya {remote_path}")
+                    logger.debug("Transferred %s -> %s", local_path, remote_path)
 
             # Also transfer the shared mmap config
             mmap_path = os.path.join("..", "config", "piccolo_mmap.json")
             if os.path.exists(mmap_path):
                 scp.put(mmap_path, posixpath.join(self.rp_dir, "piccolo_mmap.json"))
-                if self.very_verbose:
-                    print(f"Transferred {mmap_path} to Red Pitaya")
+                logger.debug("Transferred %s to Red Pitaya", mmap_path)
 
             # Transfer the FPGA bitstream
             bitstream_local = os.path.join("..", "firmware", "fpga", "piccolo.bit.bin")
             bitstream_remote = posixpath.join(self.rp_dir, "piccolo.bit.bin")
             if os.path.exists(bitstream_local):
                 scp.put(bitstream_local, bitstream_remote)
-                if self.verbose:
-                    print(f"Transferred bitstream to Red Pitaya: {bitstream_remote}")
+                logger.info("Transferred bitstream to Red Pitaya: %s", bitstream_remote)
             else:
-                print(f"WARNING: Bitstream not found at {os.path.abspath(bitstream_local)}")
+                logger.warning("Bitstream not found at %s", os.path.abspath(bitstream_local))
 
-        if self.verbose:
-            print(f"\nFiles transferred to Red Pitaya.")
+        logger.debug("Files transferred to Red Pitaya.")
 
         # Reset FPGA overlay to known state, then load bitstream
         bitstream_path = posixpath.join(self.rp_dir, "piccolo.bit.bin")
 
-        print("[HardwareController] Resetting FPGA overlay...")
+        logger.info("Resetting FPGA overlay...")
         _, stdout, stderr = ssh.exec_command("/opt/redpitaya/sbin/overlay.sh v0.49", timeout=30)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status != 0:
-            print(f"WARNING: overlay.sh v0.49 returned exit code {exit_status}. Stderr: {stderr.read().decode()}")
-        elif self.verbose:
-            print("[HardwareController] FPGA overlay reset to v0.49.")
+            logger.warning("overlay.sh v0.49 returned exit code %s. Stderr: %s", exit_status, stderr.read().decode())
+        else:
+            logger.debug("FPGA overlay reset to v0.49.")
 
-        print("[HardwareController] Loading bitstream...")
+        logger.info("Loading bitstream...")
         _, stdout, stderr = ssh.exec_command(f"/opt/redpitaya/bin/fpgautil -b {bitstream_path}", timeout=30)
         exit_status = stdout.channel.recv_exit_status()
         if exit_status == 0:
-            if self.verbose:
-                print(f"[HardwareController] Bitstream loaded from {bitstream_path}")
+            logger.debug("Bitstream loaded from %s", bitstream_path)
         else:
-            print(f"ERROR: fpgautil failed. Exit code: {exit_status}. Stderr: {stderr.read().decode()}")
+            logger.error("fpgautil failed. Exit code: %s. Stderr: %s", exit_status, stderr.read().decode())
 
         if not self.debug_flag:
             args = " ".join(self.script_args)
@@ -201,8 +193,7 @@ class HardwareController(InstrumentController):
                 f'> piccolo_stdout.log 2> piccolo_stderr.log < /dev/null &'
             )
             ssh.exec_command(f'bash -c "{cmd}"')
-            if self.verbose:
-                print("\nScript launched in background. Use log files to monitor.")
+            logger.debug("Script launched in background. Use log files to monitor.")
         else:
             args = " ".join(self.script_args)
             cmd = f'bash -l -c "cd {self.rp_dir} && sudo python3 {self.local_script} {args}"'
@@ -212,15 +203,13 @@ class HardwareController(InstrumentController):
                     line = line.strip()
                     if line:
                         self.rp_output.append(line)
-                        if self.very_verbose:
-                            print(f"[RP stdout] {line}")
+                        logger.debug("[RP stdout] %s", line)
             except Exception as e:
-                print(f"[Paramiko stdout read error] {e}")
+                logger.error("Paramiko stdout read error: %s", e)
             _ = stdout.channel.recv_exit_status()
             self.stdout = stdout.read().decode().strip()
             self.stderr = stderr.read().decode().strip()
-            if self.verbose:
-                print("\nScript executed. SSH channel closed.")
+            logger.debug("Script executed. SSH channel closed.")
 
         ssh.close()
 
@@ -247,12 +236,12 @@ class HardwareController(InstrumentController):
                 laser_box.set_active_state(name, False)
                 laser_box.set_on_state(name, False)
 
-            print("[HardwareController] LaserBox initialized successfully.")
+            logger.info("LaserBox initialized successfully.")
             return laser_box
         except FileNotFoundError:
-            print(f"[HardwareController] {laser_path} not found. Laser control disabled.")
+            logger.info("%s not found. Laser control disabled.", laser_path)
         except Exception as e:
-            print(f"[HardwareController] Failed to initialize LaserBox: {e}")
+            logger.error("Failed to initialize LaserBox: %s", e)
         return None
 
     ################ Client Methods ################
@@ -271,26 +260,26 @@ class HardwareController(InstrumentController):
         self.adc_stream_client.start(self.ip)
         self.memory_stream_client.start(self.ip)
         self.memory_command_client.start(self.ip)
-        print("[HardwareController] All clients started.")
+        logger.info("All clients started.")
 
     def stop_clients(self):
         """Stop all clients."""
         self.adc_stream_client.stop()
         self.memory_stream_client.stop()
         self.memory_command_client.stop()
-        print("[HardwareController] All clients stopped.")
+        logger.info("All clients stopped.")
 
     ################ Abstract Method Implementations ################
 
     def set_memory_variable(self, variable, value):
         """Set FPGA memory variable via TCP client."""
         self.memory_command_client.send_set_command(variable, value)
-        print(f"[HardwareController] Queued memory variable set: {variable} = {value}")
+        logger.debug("Queued memory variable set: %s = %s", variable, value)
         self.fpga_registers[variable] = value
 
     def set_laser_on_state(self, name, state):
         """Set the on/off state of a laser, with a low power default."""
-        print(f"[HardwareController] Setting laser '{name}' on state to {state}.")
+        logger.info("Setting laser '%s' on state to %s.", name, state)
         if self.laser_box:
             if state:
                 self.laser_box.set_on_state(name, True)
@@ -312,20 +301,20 @@ class HardwareController(InstrumentController):
 
     def stop(self):
         """Stop all clients and the remote server process."""
-        print("[HardwareController] Initiating shutdown...")
+        logger.info("Initiating shutdown...")
         self.stop_clients()
         self._stop_servers()
         if self.laser_box:
             self.laser_box.shutdown()
             self.laser_box.close()
-        print("[HardwareController] Shutdown complete.")
+        logger.info("Shutdown complete.")
 
     def _stop_servers(self):
         """Send kill command to Red Pitaya."""
         self.control_command_client.start(self.ip)
         time.sleep(1)
         self.control_command_client.stop()
-        print("[HardwareController] Red pitaya methods shut down successfully.")
+        logger.info("Red Pitaya methods shut down successfully.")
 
     ################ ADC Data Handling ################
 
@@ -339,8 +328,7 @@ class HardwareController(InstrumentController):
         if not fpgaoutput:
             return
 
-        if self.very_verbose:
-            print(f"[HardwareController] Received memory data: {fpgaoutput}")
+        logger.debug("Received memory data: %s", fpgaoutput)
 
         try:
             row = fpgaoutput
@@ -364,7 +352,7 @@ class HardwareController(InstrumentController):
                     self._droplet_rows = self._droplet_rows[-self.buffer_size:]
 
         except Exception as e:
-            print(f"[HardwareController] Error parsing droplet data: {e}")
+            logger.error("Error parsing droplet data: %s", e)
 
     @property
     def droplet_data(self):

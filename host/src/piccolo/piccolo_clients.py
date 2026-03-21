@@ -1,9 +1,12 @@
+import logging
 import socket
 import struct
 import threading
 import time
 import json
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 def recv_data(sock, size):
     """Helper function to receive correct 'size' bytes."""
@@ -36,7 +39,7 @@ class BaseClient:
         if self.is_streaming_client:
             self.sock.settimeout(None)  # Block indefinitely while waiting for streamed data
         self.connected = True
-        print(f"[{self.__class__.__name__}] Connected to {self.ip}:{self.port}")
+        logger.info("[%s] Connected to %s:%s", self.__class__.__name__, self.ip, self.port)
 
     def start(self, ip):
         """Start client behavior in a background thread."""
@@ -57,11 +60,11 @@ class BaseClient:
             self.sock.close()
             self.sock = None
             self.connected = False
-            print(f"[{self.__class__.__name__}] Socket closed.")
+            logger.info("[%s] Socket closed.", self.__class__.__name__)
 
     def _run(self):
         raise NotImplementedError("Subclass must implement _run()")
-    
+
 
 class ADCStreamClient(BaseClient):
     """Stream ADC waveform data."""
@@ -76,7 +79,7 @@ class ADCStreamClient(BaseClient):
 
     def _run(self):
         n_channels = 4
-        buffer_size = 4096 
+        buffer_size = 4096
         mem_size = 4
         packet_size = n_channels * buffer_size * mem_size # 4 channels
 
@@ -85,7 +88,7 @@ class ADCStreamClient(BaseClient):
                 raw_data = recv_data(self.sock, packet_size)
                 if not raw_data:
                     break
-            
+
                 # Unpack and convert to numpy arrays outside the lock
                 all_data = np.frombuffer(raw_data, dtype=np.float32)
                 adc1_data = all_data[0*buffer_size:1*buffer_size].copy()
@@ -103,7 +106,7 @@ class ADCStreamClient(BaseClient):
                     self.data_callback(adc1_data, adc2_data, adc3_data, adc4_data)
 
         except Exception as e:
-            print(f"[ADCStreamClient] Error during _run: {e}")
+            logger.error("[ADCStreamClient] Error during _run: %s", e)
         finally:
             self.close()
 
@@ -133,7 +136,7 @@ class MemoryStreamClient(BaseClient):
                 if self.data_callback:
                     self.data_callback(fpgaoutput)
         except Exception as e:
-            print(f"[MemoryStreamClient] Error during _run: {e}")
+            logger.error("[MemoryStreamClient] Error during _run: %s", e)
         finally:
             self.close()
 
@@ -160,10 +163,10 @@ class MemoryCommandClient(BaseClient):
                         header = struct.pack("I", len(message)).ljust(16, b'\x00')
                         self.sock.sendall(header + message)
 
-                        print(f"[MemoryCommandClient] Sent: {variable} = {value}")
+                        logger.debug("[MemoryCommandClient] Sent: %s = %s", variable, value)
                 time.sleep(0.1)
         except Exception as e:
-            print(f"[MemoryCommandClient] Error during _run: {e}")
+            logger.error("[MemoryCommandClient] Error during _run: %s", e)
         finally:
             self.close()
 
@@ -178,11 +181,11 @@ class ControlCommandClient(BaseClient):
         message = struct.pack("I", kill_cmd).ljust(16, b'\x00')
 
         try:
-            print("[ControlCommandClient] Sending piccolo_rp shutdown command...")
+            logger.info("[ControlCommandClient] Sending piccolo_rp shutdown command...")
             self.sock.sendall(message)
-            print("[ControlCommandClient] Shutdown command sent successfully.")
+            logger.info("[ControlCommandClient] Shutdown command sent successfully.")
         except Exception as e:
-            print(f"[ControlCommandClient] Error sending shutdown command: {e}")
+            logger.error("[ControlCommandClient] Error sending shutdown command: %s", e)
         finally:
             self.stop_flag.set()
             self.close()

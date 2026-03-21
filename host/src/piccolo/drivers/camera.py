@@ -5,10 +5,13 @@ Encapsulates the camera thread, frame grabbing, and settings.
 All camera globals from the old piccolo_ui.py live here.
 """
 
+import logging
 import threading
 import time
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Optional imports — camera support is not required
 _CAMERA_LIBS_AVAILABLE = True
@@ -62,8 +65,7 @@ class CameraManager:
         self._running = True
         self._thread = threading.Thread(target=self._grab_loop, daemon=True)
         self._thread.start()
-        if self.verbose:
-            print("[CameraManager] Camera thread started.")
+        logger.info("Camera thread started.")
 
     def stop(self):
         """Stop the camera grab thread and release the camera."""
@@ -73,9 +75,8 @@ class CameraManager:
         if self._thread:
             self._thread.join(timeout=7)
             if self._thread.is_alive():
-                print("[CameraManager] Warning: Camera thread did not stop in time.")
-        if self.verbose:
-            print("[CameraManager] Camera thread stopped.")
+                logger.warning("Camera thread did not stop in time.")
+        logger.info("Camera thread stopped.")
 
     def restart(self, hw_trigger=None):
         """Stop and restart the camera, optionally changing trigger mode."""
@@ -122,8 +123,7 @@ class CameraManager:
             cam.TriggerSelector.SetValue("FrameStart")
             cam.TriggerMode.SetValue(mode)
             cam.TriggerSource.SetValue("Line1")
-            if self.verbose:
-                print(f"[CameraManager] TriggerMode: {mode}")
+            logger.debug("TriggerMode: %s", mode)
 
             # Initial parameters
             cam.ExposureTime.SetValue(28.0)
@@ -154,14 +154,14 @@ class CameraManager:
                                 self._latest_frame_jpeg = jpeg.tobytes()
                     grab.Release()
                 except pylon.GenericException as e:
-                    print(f"[CameraManager] Pylon grab error: {e}")
+                    logger.error("Pylon grab error: %s", e)
                     time.sleep(0.1)
                 except Exception as e:
-                    print(f"[CameraManager] Processing error: {e}")
+                    logger.error("Processing error: %s", e)
                     time.sleep(0.1)
 
         except pylon.GenericException as e:
-            print(f"[CameraManager] Camera init error: {e}")
+            logger.error("Camera init error: %s", e)
             error_img = np.zeros((240, 320, 3), dtype=np.uint8)
             cv2.putText(error_img, "Camera Error", (50, 120),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
@@ -170,7 +170,7 @@ class CameraManager:
                 with self._frame_lock:
                     self._latest_frame_jpeg = jpeg.tobytes()
         except Exception as e:
-            print(f"[CameraManager] Unexpected error: {e}")
+            logger.error("Unexpected error: %s", e)
         finally:
             with self._camera_lock:
                 self._camera = None
@@ -179,5 +179,4 @@ class CameraManager:
                     cam.StopGrabbing()
                 if cam.IsOpen():
                     cam.Close()
-            if self.verbose:
-                print("[CameraManager] Camera released.")
+            logger.info("Camera released.")
