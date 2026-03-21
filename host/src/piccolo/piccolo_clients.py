@@ -50,8 +50,14 @@ class BaseClient:
     def stop(self):
         """Signal thread to stop."""
         self.stop_flag.set()
+        # Shutdown the socket to unblock any recv() calls in the thread
+        if self.sock:
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
         if self.thread:
-            self.thread.join()
+            self.thread.join(timeout=5)
         self.close()
 
     def close(self):
