@@ -107,14 +107,18 @@ class CameraManager:
             if self._camera and self._camera.IsOpen():
                 self._camera.TriggerDelay.SetValue(float(us))
 
-    def save_snapshot(self, filename="snapshot.jpg"):
-        """Save the latest frame as a JPEG file."""
+    def save_snapshot(self, filename="snapshot.png"):
+        """Save the latest frame as an image file (PNG or JPEG based on extension)."""
         frame = self.get_latest_frame()
         if frame is None:
             logger.warning("No frame available to save.")
             return None
-        with open(filename, 'wb') as f:
-            f.write(frame)
+        if filename.lower().endswith('.png'):
+            img = cv2.imdecode(np.frombuffer(frame, np.uint8), cv2.IMREAD_COLOR)
+            cv2.imwrite(filename, img)
+        else:
+            with open(filename, 'wb') as f:
+                f.write(frame)
         logger.info("Snapshot saved to %s", filename)
         return filename
 

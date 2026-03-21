@@ -17,9 +17,13 @@ dist/
 build/
 venv/
 
-# Logs
+# Logs and data
 logs/
+data/
 
 # Legacy
 concurrency_tools.py
 /tests
+
+kendra_notes.md
+PROJECT_PLAN.md

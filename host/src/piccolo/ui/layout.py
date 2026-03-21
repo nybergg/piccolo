@@ -242,8 +242,8 @@ def _camera_column(camera_available):
             html.Div(id='camera-settings-status', className="mt-2"),
             html.Hr(),
             html.H6("Capture"),
-            dbc.Input(id='camera-save-dir-input', type='text', value=".", placeholder="Save directory", className="mb-2", size="sm"),
-            dbc.Input(id='camera-filename-input', type='text', value="capture", placeholder="Filename (no extension)", className="mb-2", size="sm"),
+            dbc.Input(id='camera-save-dir-input', type='text', value="../data", placeholder="Save directory", className="mb-2", size="sm"),
+            dbc.Input(id='camera-filename-input', type='text', value="", placeholder="Auto: img_YYYY-MM-DD_HH-MM", className="mb-2", size="sm"),
             dbc.Row([
                 dbc.Col(dbc.Button("Save Snapshot", id='camera-snapshot-button', n_clicks=0, color="primary", size="sm", className="w-100"), width=6),
                 dbc.Col(dbc.Button("Start Recording", id='camera-record-button', n_clicks=0, color="success", size="sm", className="w-100"), width=6),

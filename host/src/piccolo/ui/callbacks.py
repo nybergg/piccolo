@@ -352,9 +352,14 @@ def register_callbacks(app, controller, camera_manager=None):
     def _camera_filepath(directory, filename, ext):
         """Build a full file path, creating the directory if needed."""
         import os
-        save_dir = directory.strip() if directory else "."
+        from datetime import datetime
+        save_dir = directory.strip() if directory else "../data"
         os.makedirs(save_dir, exist_ok=True)
-        name = filename.strip() if filename else "capture"
+        if not filename or not filename.strip():
+            prefix = "img" if ext in ("jpg", "png") else "vid"
+            name = f"{prefix}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}"
+        else:
+            name = filename.strip()
         return os.path.join(save_dir, f"{name}.{ext}")
 
     @app.callback(
@@ -368,7 +373,7 @@ def register_callbacks(app, controller, camera_manager=None):
         if camera_manager is None or not n_clicks:
             raise exceptions.PreventUpdate
 
-        filepath = _camera_filepath(save_dir, filename, "jpg")
+        filepath = _camera_filepath(save_dir, filename, "png")
 
         try:
             result = camera_manager.save_snapshot(filepath)
