@@ -347,6 +347,67 @@ def register_callbacks(app, controller, camera_manager=None):
         return dash.no_update
 
     # ------------------------------------------------------------------
+    # Camera capture callbacks
+    # ------------------------------------------------------------------
+    def _camera_filepath(directory, filename, ext):
+        """Build a full file path, creating the directory if needed."""
+        import os
+        save_dir = directory.strip() if directory else "."
+        os.makedirs(save_dir, exist_ok=True)
+        name = filename.strip() if filename else "capture"
+        return os.path.join(save_dir, f"{name}.{ext}")
+
+    @app.callback(
+        Output('camera-capture-status', 'children'),
+        Input('camera-snapshot-button', 'n_clicks'),
+        [State('camera-save-dir-input', 'value'),
+         State('camera-filename-input', 'value')],
+        prevent_initial_call=True
+    )
+    def save_camera_snapshot(n_clicks, save_dir, filename):
+        if camera_manager is None or not n_clicks:
+            raise exceptions.PreventUpdate
+
+        filepath = _camera_filepath(save_dir, filename, "jpg")
+
+        try:
+            result = camera_manager.save_snapshot(filepath)
+            if result:
+                msg = f"Snapshot saved to {result}"
+                return dbc.Alert(msg, color="success", duration=4000)
+            else:
+                return dbc.Alert("No frame available.", color="warning", duration=4000)
+        except Exception as e:
+            msg = f"Error saving snapshot: {e}"
+            logger.error(msg)
+            return dbc.Alert(msg, color="danger", duration=4000)
+
+    @app.callback(
+        [Output('camera-record-button', 'children'),
+         Output('camera-record-button', 'color'),
+         Output('camera-capture-status', 'children', allow_duplicate=True)],
+        Input('camera-record-button', 'n_clicks'),
+        [State('camera-save-dir-input', 'value'),
+         State('camera-filename-input', 'value')],
+        prevent_initial_call=True
+    )
+    def toggle_camera_recording(n_clicks, save_dir, filename):
+        if camera_manager is None or not n_clicks:
+            raise exceptions.PreventUpdate
+
+        if not camera_manager.is_recording:
+            filepath = _camera_filepath(save_dir, filename, "mp4")
+            camera_manager.start_recording(filepath)
+            return "Stop Recording", "danger", dbc.Alert("Recording...", color="info", duration=2000)
+        else:
+            result = camera_manager.stop_recording()
+            if result:
+                msg = f"Video saved to {result}"
+                return "Start Recording", "success", dbc.Alert(msg, color="success", duration=4000)
+            else:
+                return "Start Recording", "success", dbc.Alert("No frames recorded.", color="warning", duration=4000)
+
+    # ------------------------------------------------------------------
     # Detection / sorter toggle
     # ------------------------------------------------------------------
     @app.callback(

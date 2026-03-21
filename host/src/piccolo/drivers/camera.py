@@ -6,6 +6,7 @@ All camera globals from the old piccolo_ui.py live here.
 """
 
 import logging
+import os
 import threading
 import time
 
@@ -45,6 +46,10 @@ class CameraManager:
         self._frame_lock = threading.Lock()
         self._camera_lock = threading.Lock()
         self._latest_frame_jpeg = None
+        self._recording = False
+        self._record_frames = []
+        self._record_filename = "recording.mp4"
+        self._record_fps = 15
 
         # Create placeholder frame
         placeholder = np.zeros((240, 320, 3), dtype=np.uint8)
@@ -102,6 +107,59 @@ class CameraManager:
             if self._camera and self._camera.IsOpen():
                 self._camera.TriggerDelay.SetValue(float(us))
 
+    def save_snapshot(self, filename="snapshot.jpg"):
+        """Save the latest frame as a JPEG file."""
+        frame = self.get_latest_frame()
+        if frame is None:
+            logger.warning("No frame available to save.")
+            return None
+        with open(filename, 'wb') as f:
+            f.write(frame)
+        logger.info("Snapshot saved to %s", filename)
+        return filename
+
+    def start_recording(self, filename="recording.mp4", fps=15):
+        """Start recording frames to an MP4 file."""
+        if self._recording:
+            logger.warning("Already recording.")
+            return
+        self._recording = True
+        self._record_filename = filename
+        self._record_fps = fps
+        self._record_frames = []
+        logger.info("Recording started: %s", filename)
+
+    def stop_recording(self):
+        """Stop recording and write the video file."""
+        if not self._recording:
+            logger.warning("Not currently recording.")
+            return None
+        self._recording = False
+        frames = self._record_frames
+        self._record_frames = []
+
+        if not frames:
+            logger.warning("No frames captured during recording.")
+            return None
+
+        # Decode first frame to get dimensions
+        first = cv2.imdecode(np.frombuffer(frames[0], np.uint8), cv2.IMREAD_COLOR)
+        h, w = first.shape[:2]
+
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(self._record_filename, fourcc, self._record_fps, (w, h))
+        for raw in frames:
+            img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if img is not None:
+                writer.write(img)
+        writer.release()
+        logger.info("Recording saved to %s (%d frames)", self._record_filename, len(frames))
+        return self._record_filename
+
+    @property
+    def is_recording(self):
+        return self._recording
+
     def _grab_loop(self):
         """Camera grab thread — opens camera, grabs frames, encodes JPEG."""
         cam = None
@@ -150,8 +208,11 @@ class CameraManager:
                         img_resized = cv2.resize(img, (target_w, target_h))
                         ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 75])
                         if ret:
+                            frame_bytes = jpeg.tobytes()
                             with self._frame_lock:
-                                self._latest_frame_jpeg = jpeg.tobytes()
+                                self._latest_frame_jpeg = frame_bytes
+                            if self._recording:
+                                self._record_frames.append(frame_bytes)
                     grab.Release()
                 except pylon.GenericException as e:
                     logger.error("Pylon grab error: %s", e)
