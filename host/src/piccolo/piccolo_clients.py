@@ -33,6 +33,8 @@ class BaseClient:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(5)
         self.sock.connect((self.ip, self.port))
+        if self.is_streaming_client:
+            self.sock.settimeout(None)  # Block indefinitely while waiting for streamed data
         self.connected = True
         print(f"[{self.__class__.__name__}] Connected to {self.ip}:{self.port}")
 
