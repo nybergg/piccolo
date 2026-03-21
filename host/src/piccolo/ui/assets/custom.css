@@ -2,9 +2,151 @@
 Custom CSS for Piccolo UI
 */
 
-/* Custom CSS for Piccolo UI */
+/* --- Slider Styling (Dash 4 classes) --- */
+
+/* Full track background (unfilled rail) */
+.dash-slider-track {
+    background-color: #444 !important;
+    height: 4px !important;
+    border-radius: 2px !important;
+}
+
+/* Filled range (value portion) */
+.dash-slider-range {
+    background-color: #5bc0de !important;
+    height: 4px !important;
+    border-radius: 2px !important;
+}
+
+/* Override Dash CSS variables for slider colors */
+.dash-slider-root {
+    --Dash-Fill-Interactive-Strong: #5bc0de !important;
+    --Dash-Fill-Inverse-Strong: #333 !important;
+    --Dash-Fill-Disabled: #444 !important;
+    --Dash-Shading-Weak: transparent !important;
+    --Dash-Shading-Strong: transparent !important;
+    padding: 8px 0 17px 0 !important;
+}
+
+/* Handle / thumb */
+.dash-slider-thumb {
+    background-color: #fff !important;
+    border: 2px solid #5bc0de !important;
+    width: 14px !important;
+    height: 14px !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.dash-slider-thumb:hover {
+    background-color: #e0f4fa !important;
+}
+
+.dash-slider-thumb:focus,
+.dash-slider-thumb:active,
+.dash-slider-thumb:focus-visible {
+    background-color: #fff !important;
+    border-color: #5bc0de !important;
+    outline: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* Dot marks on track */
+.dash-slider-dot {
+    background-color: #5bc0de !important;
+}
+
+/* Tooltip (displayed value) */
+.dash-slider-tooltip {
+    background-color: #333 !important;
+    color: #fff !important;
+    font-size: 15px !important;
+    padding: 2px 6px !important;
+    border-radius: 3px !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 1056 !important;
+}
+
+/* Slider wrapper / container */
+.dash-slider-wrapper {
+    background-color: transparent !important;
+    padding: 5px 0 !important;
+}
+
+.dash-slider-container {
+    background-color: transparent !important;
+}
+
+/* --- Legacy rc-slider classes (fallback) --- */
+
+.rc-slider {
+    background-color: transparent !important;
+}
+
+.rc-slider-rail {
+    background-color: #444 !important;
+    height: 4px !important;
+}
+
+.rc-slider-track {
+    background-color: #5bc0de !important;
+    height: 4px !important;
+}
+
+.rc-slider-handle {
+    background-color: #5bc0de !important;
+    border: 2px solid #5bc0de !important;
+    width: 14px !important;
+    height: 14px !important;
+    margin-top: -5px !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+}
+
+.rc-slider-handle:hover,
+.rc-slider-handle:focus,
+.rc-slider-handle:active,
+.rc-slider-handle-dragging {
+    border-color: #7dd3e8 !important;
+    box-shadow: none !important;
+}
+
 .rc-slider-tooltip {
-    z-index: 1056; /* Ensure tooltip is above other elements */
+    z-index: 1056 !important;
+}
+
+.rc-slider-tooltip-inner {
+    background-color: #333 !important;
+    color: #fff !important;
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    min-height: auto !important;
+    height: auto !important;
+    border-radius: 3px !important;
+    box-shadow: none !important;
+}
+
+.rc-slider-tooltip-arrow {
+    border-top-color: #333 !important;
+}
+
+/* --- Disabled Slider Overrides --- */
+
+.dash-slider-wrapper[data-disabled="true"] .dash-slider-range,
+.rc-slider-disabled .rc-slider-track {
+    background-color: #555 !important;
+}
+
+.dash-slider-wrapper[data-disabled="true"] .dash-slider-dot,
+.rc-slider-disabled .rc-slider-handle {
+    background-color: #555 !important;
+    border-color: #555 !important;
+}
+
+.rc-slider-disabled {
+    background-color: transparent !important;
 }
 
 
@@ -57,25 +199,6 @@ input[type="text"], input[type="number"] {
 /* An individual option in the dropdown when hovered or focused */
 .Select-option.is-focused {
   background-color: #444444 !important;
-}
-
-
-/* --- Custom Laser Slider Styles --- */
-
-/* Keep the background of the disabled slider track dark, like the rest of the theme */
-.rc-slider-disabled {
-    background-color: #222 !important; /* Overrides the default light grey */
-}
-
-/* Style the filled part of the track for a disabled slider to be a muted grey */
-.rc-slider-disabled .rc-slider-track {
-    background-color: #555 !important;
-}
-
-/* Style the handle of a disabled slider to be a muted grey */
-.rc-slider-disabled .rc-slider-handle {
-    background-color: #555 !important;
-    border-color: #777 !important;
 }
 
 /* Laser Status Indicator */

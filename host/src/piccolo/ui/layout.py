@@ -78,7 +78,6 @@ def _controls_column():
                     html.Hr(),
                     # Lasers
                     dbc.Row([
-                        dbc.Col(width=1),
                         dbc.Col(html.H6("Laser Controls", className="mt-3"), width='auto'),
                         dbc.Col(html.Div(id='laser-status-indicator', className='status-indicator-off'), width='auto', align='center')
                     ], align='center'),
@@ -144,9 +143,8 @@ def _controls_column():
 def _laser_row(index, label):
     """Single laser control row with checkbox and power slider."""
     return dbc.Row([
-        dbc.Col(width=1),
         dbc.Col(dbc.Checklist(id={'type': 'laser-on-checklist', 'index': index}, options=[{'label': label, 'value': index}], value=[]), width=2),
-        dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': index}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=False), width=9)
+        dbc.Col(dcc.Slider(id={'type': 'laser-power-slider', 'index': index}, min=0, max=50, step=1, value=5, marks=None, tooltip={"placement": "bottom", "always_visible": True}, disabled=False), width=10)
     ], className="mb-2")
 
 
