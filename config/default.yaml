@@ -10,7 +10,8 @@ camera_enabled: true    # true = start camera thread (requires pypylon + OpenCV)
 # Red Pitaya connection
 # Credentials are loaded via --rp-login (not stored here for security).
 rp_dir: "piccolo_testing"
-rp_script: "piccolo_rp.py"
+rp_script: "piccolo_api.py"    # FastAPI server entry on the Red Pitaya
+api_port: 8000                 # Red Pitaya FastAPI server port
 
 # Laser
 laser_config_path: "../config/laser_config.json"

@@ -1,6 +1,9 @@
 # Vivado project files
 firmware/fpga/project/
 
+# Local FPGA working notes (build guide is BUILD.md, which is committed)
+firmware/fpga/TIMING_NOTES.md
+
 # Red Pitaya credentials (sensitive)
 config/rp_login_desk.json
 config/rp_login_lab.json

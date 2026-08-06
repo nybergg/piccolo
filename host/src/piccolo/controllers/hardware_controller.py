@@ -18,12 +18,7 @@ import pandas as pd
 
 from piccolo.controllers.controller import InstrumentController
 from piccolo.conversion import raw_to_volts, FPGA_CLK_MHZ
-from piccolo.piccolo_clients import (
-    ADCStreamClient,
-    MemoryStreamClient,
-    MemoryCommandClient,
-    ControlCommandClient
-)
+from piccolo.piccolo_client import PiccoloClient
 from piccolo.drivers.laser import LaserBox
 
 logger = logging.getLogger(__name__)
@@ -32,7 +27,7 @@ logger = logging.getLogger(__name__)
 class HardwareController(InstrumentController):
     def __init__(self,
                  config=None,
-                 local_script="piccolo_rp.py",
+                 local_script="piccolo_api.py",
                  local_dir="../firmware/arm",
                  script_args=None,
                  rp_dir="piccolo_testing",
@@ -51,6 +46,7 @@ class HardwareController(InstrumentController):
         self.verbose = verbose
         self.very_verbose = very_verbose
         self.debug_flag = debug_flag
+        self.api_port = getattr(config, "api_port", 8000) if config else 8000
 
         # Get rp login information from config
         self._load_rp_login(config)
@@ -257,34 +253,31 @@ class HardwareController(InstrumentController):
     ################ Client Methods ################
 
     def _setup_clients(self):
-        """Initialize but don't start clients yet."""
-        self.adc_stream_client = ADCStreamClient(
-            data_callback=self._get_adc_data)
-        self.memory_stream_client = MemoryStreamClient(
-            data_callback=self._get_memory_data)
-        self.memory_command_client = MemoryCommandClient()
-        self.control_command_client = ControlCommandClient()
+        """Initialize (but don't start) the Red Pitaya API client."""
+        self.client = PiccoloClient(
+            self.ip,
+            port=self.api_port,
+            adc_callback=self._get_adc_data,
+            droplet_callback=self._get_memory_data,
+        )
 
     def start_clients(self):
-        """Start all Red Pitaya clients."""
-        self.adc_stream_client.start(self.ip)
-        self.memory_stream_client.start(self.ip)
-        self.memory_command_client.start(self.ip)
+        """Wait for the Red Pitaya API server to be ready, then start streaming."""
+        self.client.wait_until_ready(timeout=20.0)
+        self.client.start()
         logger.info("All clients started.")
 
     def stop_clients(self):
-        """Stop all clients."""
-        self.adc_stream_client.stop()
-        self.memory_stream_client.stop()
-        self.memory_command_client.stop()
+        """Stop the streaming connections."""
+        self.client.stop()
         logger.info("All clients stopped.")
 
     ################ Abstract Method Implementations ################
 
     def set_memory_variable(self, variable, value):
-        """Set FPGA memory variable via TCP client."""
-        self.memory_command_client.send_set_command(variable, value)
-        logger.debug("Queued memory variable set: %s = %s", variable, value)
+        """Set an FPGA register via the Red Pitaya API."""
+        self.client.set_register(variable, value)
+        logger.debug("Set memory variable: %s = %s", variable, value)
         self.fpga_registers[variable] = value
 
     def set_laser_on_state(self, name, state):
@@ -310,21 +303,20 @@ class HardwareController(InstrumentController):
         self.start_clients()
 
     def stop(self):
-        """Stop all clients and the remote server process."""
+        """Stop streaming, shut down the remote server, and close the laser."""
         logger.info("Initiating shutdown...")
         self.stop_clients()
         self._stop_servers()
+        self.client.close()
         if self.laser_box:
             self.laser_box.shutdown()
             self.laser_box.close()
         logger.info("Shutdown complete.")
 
     def _stop_servers(self):
-        """Send kill command to Red Pitaya."""
-        self.control_command_client.start(self.ip)
-        time.sleep(1)
-        self.control_command_client.stop()
-        logger.info("Red Pitaya methods shut down successfully.")
+        """Ask the Red Pitaya API server to shut down."""
+        self.client.shutdown()
+        logger.info("Red Pitaya server shut down.")
 
     ################ ADC Data Handling ################
 

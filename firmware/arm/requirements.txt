@@ -1,0 +1,11 @@
+# Python dependencies for the Red Pitaya API server (piccolo_api.py).
+# Install once on the Red Pitaya:  sudo pip3 install -r requirements.txt
+# (The Red Pitaya 'rp' API module ships with the board image and is not pip-installable.)
+#
+# NOTE: the Red Pitaya is 32-bit ARM (armv7l). pydantic v2's Rust core has no armv7l
+# wheel, so we pin pydantic v1 (pure Python; FastAPI supports both). Plain uvicorn +
+# websockets avoids the uvloop/httptools C builds that 'uvicorn[standard]' would pull.
+fastapi==0.115.12
+pydantic<2
+uvicorn==0.34.0
+websockets==15.0.1

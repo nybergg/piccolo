@@ -161,8 +161,50 @@ generate
 endgenerate
 
 // Final droplet sorting decision logic
+wire droplet_any_activity;
 assign droplet_positive = &positive_intensity_masked && &positive_width_masked && &positive_area_masked;
-assign droplet_negative = (|low_intensity || |high_intensity || |positive_intensity) && (|low_width || |high_width || |positive_width) && (|low_area || |high_area || |positive_area) && (~(&positive_intensity_masked && &positive_width_masked && &positive_area_masked));
+// "Some activity on every metric, but not a full positive." Logically identical to
+// the original expression, but reuses droplet_positive instead of recomputing the
+// three &-reductions, shortening the logic cone.
+assign droplet_any_activity = (|low_intensity || |high_intensity || |positive_intensity) &&
+                              (|low_width     || |high_width     || |positive_width)     &&
+                              (|low_area      || |high_area      || |positive_area);
+assign droplet_negative = droplet_any_activity && ~droplet_positive;
+
+////////////////////////////////////////////////////////////////////////////////
+// Pipelined classification registers
+////////////////////////////////////////////////////////////////////////////////
+// The threshold comparators above feed a wide AND/OR reduction (droplet_positive /
+// droplet_negative) plus the per-metric "min met" checks. Driving that combinational
+// cloud straight into the droplet state machine (state 3) formed a long path that is
+// hard to close at the 125 MHz ADC clock (the reported FADS timing violation).
+//
+// The signal_* accumulators are frozen once acquisition ends (the state 2 -> 3
+// transition happens on the cycle the detection channel drops below threshold, and
+// signal_* are not written that cycle), so their comparator results are already
+// stable the cycle before state 3 runs. Registering them here therefore feeds the
+// FSM identical values one pipeline stage earlier, with a much shorter path.
+reg          droplet_positive_r;
+reg          droplet_negative_r;
+reg          min_intensity_met_r;
+reg          min_width_met_r;
+reg          min_area_met_r;
+
+always @(posedge clk_i) begin
+    if (!rstn_i) begin
+        droplet_positive_r  <= 1'b0;
+        droplet_negative_r  <= 1'b0;
+        min_intensity_met_r <= 1'b0;
+        min_width_met_r     <= 1'b0;
+        min_area_met_r      <= 1'b0;
+    end else begin
+        droplet_positive_r  <= droplet_positive;
+        droplet_negative_r  <= droplet_negative;
+        min_intensity_met_r <= (signal_max[detection_channel]   >= min_intensity_threshold[detection_channel]);
+        min_width_met_r     <= (signal_width[detection_channel] >= min_width_threshold[detection_channel]);
+        min_area_met_r      <= (signal_area[detection_channel]  >= min_area_threshold[detection_channel]);
+    end
+end
 
 ////////////////////////////////////////////////////////////////////////////////
 // MOVING AVERAGE FILTERS
@@ -262,10 +304,10 @@ reg [3-1:0] state = 3'd0;  // state encoding
 
 always @(posedge clk_i) begin
     integer i;
-    debug[6] <= droplet_negative;
-    debug[7] <= droplet_positive;
-    
-    // Debug
+
+    // debug (wired to led_o) shows the FSM state; the previous debug[6]/debug[7]
+    // overlay was clobbered by the full-width state codes below and is removed.
+    // droplet_positive is still observable via droplet_classification[15].
     case (state)
         // Base state | 0
         3'd0: begin
@@ -273,7 +315,7 @@ always @(posedge clk_i) begin
             if (!detection_enable || !rstn_i) begin
                 state <= 3'd0;                
                 sort_trig <= 1'b0;
-                
+
                 droplet_id <= 32'd0;
                 droplet_counter <= 32'd0;
                 sorted_droplet_counter <= 32'd0;
@@ -346,11 +388,11 @@ always @(posedge clk_i) begin
                 state <= 3'd0;  
             else begin
                 debug <= 8'b00001000;
-                // Only update droplet outputs if the droplet meets all the threshold requirements:
-                if ((signal_width[detection_channel] >= min_width_threshold[detection_channel]) &&
-                    (signal_max[detection_channel]  >= min_intensity_threshold[detection_channel]) &&
-                    (signal_area[detection_channel] >= min_area_threshold[detection_channel]) &&
-                    (droplet_positive || droplet_negative)) begin
+                // Only update droplet outputs if the droplet meets all the threshold
+                // requirements. Uses the pipelined (registered) comparators declared
+                // above to keep this combinational path out of the state machine.
+                if (min_width_met_r && min_intensity_met_r && min_area_met_r &&
+                    (droplet_positive_r || droplet_negative_r)) begin
                     
                     // Update counters
                     droplet_id <= droplet_id + 32'd1;
@@ -395,7 +437,7 @@ always @(posedge clk_i) begin
                 end
                 
                 // Continue with state transition (sorting if enabled and droplet is positive)
-                if (sort_enable && droplet_positive) begin
+                if (sort_enable && droplet_positive_r) begin
                     sorted_droplet_counter <= sorted_droplet_counter + 32'd1;
                     sort_delay_end_us <= general_timer_us + sort_delay;
                     state <= 3'd4;

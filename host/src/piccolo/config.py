@@ -18,7 +18,8 @@ class PiccoloConfig:
     rp_username: str = "root"
     rp_password: str = ""
     rp_dir: str = "piccolo_testing"
-    rp_script: str = "piccolo_rp.py"
+    rp_script: str = "piccolo_api.py"
+    api_port: int = 8000
 
     # Data
     buffer_size: int = 1000
