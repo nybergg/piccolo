@@ -59,7 +59,7 @@ pytest
 
 ## Architecture
 
-The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connected via TCP. On the host side, the code is layered so that the UI never talks to hardware directly — it goes through a controller, which delegates to drivers and clients.
+The system spans three build targets (host PC, Red Pitaya ARM, and FPGA), connected over HTTP/WebSocket (a FastAPI server on the Red Pitaya). On the host side, the code is layered so that the UI never talks to hardware directly — it goes through a controller, which delegates to drivers and the API client.
 
 ```
                                                                     SiPM Detectors
@@ -75,13 +75,13 @@ The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connect
 │  │  Controller           │  │      │           │ mmap         │
 │  │  HardwareController   │  │      │  ┌────────▼───────────┐  │
 │  │    or                 │  │      │  │  ARM               │  │
-│  │  HardwareSimulator    │  │      │  │  piccolo_rp.py     │  │
+│  │  HardwareSimulator    │  │      │  │  piccolo_api.py    │  │
 │  └──┬─────────┬──────────┘  │      │  │  - mmap registers  │  │
-│     │         │             │      │  │  - TCP servers     │  │
+│     │         │             │      │  │  - FastAPI server  │  │
 │  ┌──▼───┐ ┌──▼───────────┐  │      │  └────────────────────┘  │
-│  │Laser │ │TCP Clients   │──┼──TCP──────────────┘             │
-│  │Camera│ │(ADC, Memory, │  │      │                          │
-│  │      │ │ Command)     │  │      └──────────────────────────┘
+│  │Laser │ │PiccoloClient │──┼─HTTP/WS───────────┘             │
+│  │Camera│ │(REST + WS)   │  │      │                          │
+│  │      │ │              │  │      └──────────────────────────┘
 │  └──────┘ └──────────────┘  │
 │                             │
 └─────────────────────────────┘
@@ -89,7 +89,7 @@ The system spans three build targets (host PC, Red Pitaya ARM, and FPGA) connect
 
 **Controllers** make decisions (detection, gating, data buffering). They implement a shared `InstrumentController` interface so the UI works identically with real hardware or simulation.
 
-**Drivers** own a hardware resource (laser serial port, camera USB). **Clients** handle the TCP protocol to the Red Pitaya.
+**Drivers** own a hardware resource (laser serial port, camera USB). **`PiccoloClient`** speaks REST (commands) and WebSocket (ADC + droplet streams) to the Red Pitaya's FastAPI server.
 
 ## Repository Structure
 
@@ -101,7 +101,7 @@ piccolo/
 │   │   ├── __main__.py                # Entry point: python -m piccolo
 │   │   ├── config.py                  # Config loading from YAML
 │   │   ├── conversion.py             # Unit conversion (raw ↔ volts, register display)
-│   │   ├── piccolo_clients.py         # TCP client classes
+│   │   ├── piccolo_client.py          # PiccoloClient — REST + WebSocket client for the RP API
 │   │   ├── controllers/
 │   │   │   ├── controller.py          # InstrumentController ABC
 │   │   │   ├── hardware_controller.py # Real hardware controller
@@ -118,12 +118,16 @@ piccolo/
 │       ├── test_conversion.py
 │       ├── test_hardware_simulator.py
 │       ├── test_config.py
-│       └── test_clients.py
+│       └── test_piccolo_client.py
 ├── firmware/                          # Everything deployed to the Red Pitaya
-│   ├── arm/piccolo_rp.py              # Runs on RP ARM core
+│   ├── arm/
+│   │   ├── piccolo_api.py             # FastAPI server (REST + WebSocket) — entry point
+│   │   ├── piccolo_rp.py              # PiccoloRP hardware layer (mmap + ADC acquisition)
+│   │   └── requirements.txt           # RP-side deps (fastapi, uvicorn, websockets)
 │   └── fpga/                          # RTL + bitstream
 │       ├── rtl/                       # SystemVerilog source
-│       └── piccolo.bit.bin            # Compiled bitstream
+│       ├── piccolo.bit.bin            # Compiled bitstream
+│       └── BUILD.md                   # How to rebuild the bitstream (Vivado + phys_opt)
 ├── config/                            # Shared configuration
 │   ├── default.yaml                   # Runtime config (all settings in one place)
 │   ├── rp_login.json                  # Red Pitaya SSH credentials (gitignored)
@@ -158,14 +162,29 @@ The FPGA runs at **125 MHz** (8 ns per clock cycle). Register values are stored 
 
 ## Communication Protocol
 
-The Red Pitaya hosts four TCP servers:
+The Red Pitaya runs a single **FastAPI** server (`firmware/arm/piccolo_api.py`, default
+port `8000`); the host talks to it via `PiccoloClient`
+(`host/src/piccolo/piccolo_client.py`) using REST for commands and WebSockets for
+streaming.
 
-| Port | Service | Direction | Description |
+| Endpoint | Type | Direction | Description |
 |---|---|---|---|
-| 5000 | Control | PC → RP | Shutdown command |
-| 5001 | ADC Stream | RP → PC | Continuous 4-channel ADC waveform data (4096 samples/ch, float32) |
-| 5002 | Memory Stream | RP → PC | Droplet measurement data as JSON (intensity, width, area per channel) |
-| 5003 | Memory Command | PC → RP | Set FPGA register values via JSON `{"name": ..., "value": ...}` |
+| `GET /health` | REST | PC → RP | Liveness probe; the host waits on this before streaming |
+| `GET /registers` | REST | PC → RP | Snapshot of all FPGA registers (JSON) |
+| `POST /registers/{name}` | REST | PC → RP | Set one FPGA register — body `{"value": <int\|str>}` |
+| `POST /shutdown` | REST | PC → RP | Stop the server process |
+| `WS /ws/adc` | WebSocket | RP → PC | 4-channel ADC frames, little-endian float32 (4096 samples/ch), ~15 Hz |
+| `WS /ws/droplets` | WebSocket | RP → PC | Droplet/register snapshots as JSON, sent on each new droplet |
+
+**Interactive API docs** (auto-generated by FastAPI, served from the RP while it runs):
+
+- Swagger UI: `http://<rp-ip>:8000/docs`
+- ReDoc: `http://<rp-ip>:8000/redoc`
+- OpenAPI schema: `http://<rp-ip>:8000/openapi.json`
+
+Install the server deps on the Red Pitaya once with
+`sudo pip3 install -r firmware/arm/requirements.txt` (pinned for the board's 32-bit ARM;
+the `rp` API module ships with the Red Pitaya image).
 
 ## Hardware
 
@@ -183,10 +202,14 @@ The Red Pitaya hosts four TCP servers:
 Core dependencies are managed via `host/pyproject.toml`:
 
 - `dash`, `plotly`, `dash-bootstrap-components` — web UI
-- `paramiko`, `scp` — SSH/SCP to Red Pitaya
+- `paramiko`, `scp` — SSH/SCP to Red Pitaya (deploy + launch)
+- `httpx`, `websockets` — REST + WebSocket client for the Red Pitaya FastAPI server
 - `numpy`, `pandas`, `scipy` — data handling and analysis
 - `pyserial` — laser box serial communication
 - `pyyaml` — configuration loading
+
+The Red Pitaya server has its own dependencies (`firmware/arm/requirements.txt`:
+`fastapi`, `uvicorn`, `websockets`, `pydantic<2`).
 
 Optional (install with `pip install -e ".[camera]"`):
 
