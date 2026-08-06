@@ -103,6 +103,7 @@ def main():
         controller = HardwareController(
             config=config,
             rp_dir=config.rp_dir,
+            local_script=config.rp_script,
             verbose=verbose,
         )
         if config.launch_rp:

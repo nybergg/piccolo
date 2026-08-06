@@ -9,10 +9,10 @@ import mmap
 import argparse
 import socket
 
-# Red Pitaya API imports
+# The Red Pitaya 'rp' API module ships with the board image and only exists on the
+# device. It is imported lazily inside _get_adc_data so this module can be imported
+# (and the FastAPI layer tested) on a development host without the board.
 import sys
-sys.path.append("/opt/redpitaya/lib/python")
-import rp  # Your Red Pitaya API module
 
 
 class PiccoloRP:
@@ -438,7 +438,12 @@ class PiccoloRP:
     ################ Oscilliscope methods ################
     
     def _get_adc_data(self, continuous=False):
-        """Read the ADC data from the memory."""    
+        """Read the ADC data from the memory."""
+        # Lazy import: the 'rp' module only exists on the Red Pitaya board.
+        if "/opt/redpitaya/lib/python" not in sys.path:
+            sys.path.append("/opt/redpitaya/lib/python")
+        import rp
+
         dec = rp.RP_DEC_128
         
         N = 16384
@@ -529,138 +534,31 @@ class PiccoloRP:
         return None
     
 
-    ################ Server methods ################
+    ################ Acquisition control + API helpers ################
 
-    def _control_server(self, client):
-        """ TCP server that manages shutdown command from client """
-        try:
-            while True:
-                data = client.recv(16)
-                if not data:
-                    break
-                opcode = struct.unpack("I", data[:4])[0]
-                if opcode == 99:
-                    print("Shutdown signal received.")
-                    self.shutdown_event.set()
-                    return
-                else:
-                    print(f"[Control] Unknown opcode: {opcode}")
-        finally:
-            client.close()
-            print("Control command server closed.")
-
-        return None
-    
-    def _getadc_server(self, client):
-        """ TCP server that streams CH1 and CH2 data from ADCs """
-        
-        # Start continuous ADC acquisition if not already started
+    def start_acquisition(self):
+        """Start the continuous ADC acquisition thread if it is not already running."""
         if not self.acq_thread_started:
             self.acq_thread_started = True
-            thread = threading.Thread(target=self._get_adc_data, kwargs={"continuous": True}, daemon=True)
+            thread = threading.Thread(
+                target=self._get_adc_data, kwargs={"continuous": True}, daemon=True)
             thread.start()
-        
-        # Continuously stream ADC data to the client
+            if self.verbose:
+                print("ADC acquisition thread started.")
+
+    def get_adc_payload(self):
+        """Return the latest packed 4-channel ADC frame (little-endian float32 bytes,
+        layout ch1||ch2||ch3||ch4), or None if no data has been acquired yet."""
+        with self.adc_lock:
+            return getattr(self, 'adc_bytes', None)
+
+    def cleanup(self):
+        """Release the memory mapping. Call once on server shutdown."""
         try:
-            while True:
-                with self.adc_lock:
-                    data = getattr(self, 'adc_bytes', None)
-                if data:
-                    client.sendall(data)
-                else:
-                    time.sleep(0.01)
-        except Exception as e:
-            print(f"[ADCStream] Error: {e}")
-        finally:
-            client.close()
-            print("ADC stream server closed.")
-
-        return None
-    
-    def _getmem_server(self, client):
-        """ TCP server that streams fpga outputs """
-
-        # Continuously stream FPGA outputs to the client
-        last_droplet_id = None
-        try:
-            while True:
-                self.get_all()
-                cur_droplet_id = self.fpga_vars.get('droplet_id')
-
-                # Only send when a new droplet is detected
-                if cur_droplet_id != last_droplet_id:
-                    last_droplet_id = cur_droplet_id
-                    msg = json.dumps(self.fpga_vars).encode()
-                    length = struct.pack("I", len(msg)).ljust(16, b'\x00')
-                    client.sendall(length + msg)
-                    if self.verbose:
-                        print(f"Cur Droplet ID:{cur_droplet_id}")
-
-                time.sleep(0.001)
-        except Exception as e:
-            print(f"[MemStream] Error: {e}")
-        finally:
-            client.close()
-            print("Memory stream server closed.")
-        
-        return None
-
-    def _setmem_server(self, client):
-        """ TCP server that gets/sets fpga inputs """
-        try:
-            while True:
-                header = client.recv(16)
-                if not header:
-                    break
-
-                msg_len = struct.unpack("I", header[:4])[0]
-                msg = self._recv_all(client, msg_len)
-                if not msg:
-                    break
-                data = json.loads(msg.decode())
-                var_name = data["name"]
-                value = data["value"]
-                
-                self.set_var(var_name=var_name, value=value)  
-        except Exception as e:
-            print(f"[MemSet] Error: {e}")
-        finally:
-            client.close()
-            print("Memory set server closed.")
-        
-        return None
-
-    def _start_server(self, port, handler):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('', port))
-        sock.listen(1)
-
-        while True:
-            client, addr = sock.accept()
-            print(f"[Port {port}] Connection from {addr}")
-            thread = threading.Thread(target=handler, args=(client,), daemon=True)
-            thread.start()
-
-    def start_servers(self):
-        servers = {
-            5000: self._control_server,
-            5001: self._getadc_server,
-            5002: self._getmem_server,
-            5003: self._setmem_server,
-        }
-
-        for port, handler in servers.items():
-            thread = threading.Thread(target=self._start_server, args=(port, handler), daemon=True)
-            thread.start()
-            print(f"[Port {port}] Server started.")
-
-        print("All servers running.")
-        self.shutdown_event.wait()
-        print("Shutdown event received. Cleaning up...")
-        self.mmap.close()
-        self.mem_fd.close()
-        print("Cleanup complete. Exiting.")
+            self.mmap.close()
+            self.mem_fd.close()
+        except Exception:
+            pass
 
     def test(self):
         print("\n////////// Starting Red Pitaya Piccolo Testing ///////////")
@@ -707,14 +605,16 @@ class PiccoloRP:
         print("\n////////// All Red Pitaya Testing Complete ///////////")
 
 if __name__ == "__main__":
+    # PiccoloRP is now the hardware layer only; the network API is served by
+    # piccolo_api.py (FastAPI + uvicorn). Running this file directly performs a
+    # local hardware self-test.
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
     parser.add_argument("--very_verbose", action="store_true", help="Enable very verbose mode")
     args = parser.parse_args()
-    
+
     piccolo = PiccoloRP(verbose=args.verbose, very_verbose=args.very_verbose)
     piccolo.test()
-    piccolo.start_servers()
 
     
     
