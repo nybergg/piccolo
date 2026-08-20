@@ -19,11 +19,16 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
 from piccolo.conversion import convert_display_to_raw
+from piccolo.ui.layout import PUMP_COLOR_DISPENSE, PUMP_COLOR_ASPIRATE, PUMP_COLOR_IDLE
 
 logger = logging.getLogger(__name__)
 
-# Syringe fill colors by state (mirrors the CETONI aspirate/dispense color cue).
-_PUMP_STATE_COLORS = {"idle": "#6c757d", "aspirate": "#2b8cff", "dispense": "#f0932b"}
+# Syringe fill colors by state (shared with layout; green dispense / blue aspirate).
+_PUMP_STATE_COLORS = {
+    "idle": PUMP_COLOR_IDLE,
+    "aspirate": PUMP_COLOR_ASPIRATE,
+    "dispense": PUMP_COLOR_DISPENSE,
+}
 
 
 def _syringe_view(st):

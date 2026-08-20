@@ -10,6 +10,13 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 
+# Pump/syringe state colors — matched to the app's signal palette.
+PUMP_COLOR_DISPENSE = "#71f445"   # green (dispense)
+PUMP_COLOR_ASPIRATE = "#3fe4fa"   # blue (aspirate)
+PUMP_COLOR_IDLE = "#6c757d"       # grey (idle)
+PUMP_COLOR_STOP = "#ff5555"       # red (stop icon)
+
+
 # Axis options for scatter plot dropdowns
 AXIS_OPTIONS_LIST = [
     "cur_droplet_intensity[0]", "cur_droplet_intensity[1]", "cur_droplet_intensity[2]", "cur_droplet_intensity[3]",
@@ -180,13 +187,12 @@ def _pump_card(name):
     """
     tiny = {'fontSize': '10px'}
 
-    def icon_btn(icon, pid, color, title):
+    def icon_btn(icon, pid, icon_color, title):
         return dbc.Col(
-            dbc.Button(html.I(className=f"bi {icon}"),
-                       id={'type': pid, 'index': name}, color=color, size="sm",
-                       className="w-100 p-1", n_clicks=0, title=title,
-                       style={'fontSize': '11px'}),
-            width=3, className="px-0")
+            dbc.Button(html.I(className=f"bi {icon}", style={'fontSize': '15px', 'color': icon_color}),
+                       id={'type': pid, 'index': name}, color="link", size="sm",
+                       className="p-0 w-100", n_clicks=0, title=title),
+            width=3, className="px-0", style={'textAlign': 'center'})
 
     return dbc.Col([
         html.Div(id={'type': 'pump-syringe', 'index': name}),
@@ -198,13 +204,16 @@ def _pump_card(name):
         dbc.Input(id={'type': 'pump-volume', 'index': name}, type='number', value=0,
                   min=0, step="any", size="sm", placeholder="vol (opt)", className="mb-1 p-1", style=tiny),
         dbc.Row([
-            icon_btn("bi-play-fill", 'pump-start', "success", "Start (+flow dispense / -flow aspirate; vol>0 doses)"),
-            icon_btn("bi-stop-fill", 'pump-stop', "danger", "Stop"),
-            icon_btn("bi-chevron-double-up", 'pump-fill', "secondary", "Fill (aspirate to full)"),
-            icon_btn("bi-chevron-double-down", 'pump-empty', "secondary", "Empty (dispense to 0)"),
+            icon_btn("bi-play-fill", 'pump-start', PUMP_COLOR_DISPENSE, "Start (+flow dispense / -flow aspirate; vol>0 doses)"),
+            icon_btn("bi-stop-fill", 'pump-stop', PUMP_COLOR_STOP, "Stop"),
+            icon_btn("bi-chevron-double-up", 'pump-fill', PUMP_COLOR_ASPIRATE, "Fill (aspirate to full)"),
+            icon_btn("bi-chevron-double-down", 'pump-empty', PUMP_COLOR_DISPENSE, "Empty (dispense to 0)"),
         ], className="g-1"),
-        html.Div("+ dispense / - aspirate", className="text-muted text-center",
-                 style={'fontSize': '7px'}),
+        html.Div([
+            html.Span("+disp", style={'color': PUMP_COLOR_DISPENSE}),
+            " / ",
+            html.Span("−asp", style={'color': PUMP_COLOR_ASPIRATE}),
+        ], className="text-center", style={'fontSize': '7px'}),
         html.Div(id={'type': 'pump-ack', 'index': name}, className="text-muted",
                  style={'fontSize': '8px'}),
     ], className="px-1", style={'minWidth': '0'})
