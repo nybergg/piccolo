@@ -27,17 +27,14 @@ _PUMP_STATE_COLORS = {"idle": "#6c757d", "aspirate": "#2b8cff", "dispense": "#f0
 
 
 def _syringe_view(st):
-    """Vertical syringe graphic (barrel + animated liquid level) for one pump status."""
+    """Compact vertical syringe graphic (barrel + animated liquid level) for one pump."""
     frac = 0.0
     if st.max_volume_ul > 0:
         frac = max(0.0, min(1.0, st.fill_level_ul / st.max_volume_ul))
     state = st.direction if (st.is_pumping and st.direction in ("aspirate", "dispense")) else "idle"
     color = _PUMP_STATE_COLORS[state]
     return html.Div([
-        html.Div(st.name, style={'fontSize': '10px', 'textAlign': 'center',
-                                 'whiteSpace': 'nowrap', 'overflow': 'hidden',
-                                 'textOverflow': 'ellipsis'}),
-        html.Div(style={'width': '10px', 'height': '9px', 'background': '#888',
+        html.Div(style={'width': '10px', 'height': '8px', 'background': '#888',
                         'margin': '0 auto', 'borderRadius': '2px'}),          # plunger cap
         html.Div(                                                             # barrel
             html.Div(style={                                                 # liquid column
@@ -45,17 +42,15 @@ def _syringe_view(st):
                 'height': f'{frac * 100:.1f}%', 'backgroundColor': color,
                 'transition': 'height 0.25s linear, background-color 0.2s',
             }),
-            style={'position': 'relative', 'height': '150px', 'width': '30px',
+            style={'position': 'relative', 'height': '120px', 'width': '26px',
                    'border': '2px solid #999', 'borderRadius': '3px 3px 2px 2px',
                    'overflow': 'hidden', 'backgroundColor': '#111', 'margin': '2px auto'},
         ),
-        html.Div(style={'width': '2px', 'height': '9px', 'background': '#888',
+        html.Div(style={'width': '2px', 'height': '8px', 'background': '#888',
                         'margin': '0 auto'}),                                 # needle
-        html.Div(f"{st.fill_level_ul:.0f}/{st.max_volume_ul:.0f} uL",
-                 style={'fontSize': '9px', 'textAlign': 'center', 'color': '#aaa'}),
-        html.Div(state, style={'fontSize': '9px', 'textAlign': 'center',
-                               'color': color, 'fontWeight': 'bold'}),
-    ], style={'flex': '1', 'minWidth': '0', 'padding': '0 2px'})
+        html.Div(f"{st.fill_level_ul:.0f}", style={'fontSize': '9px',
+                 'textAlign': 'center', 'color': '#aaa'}),
+    ], style={'width': '46px'})
 
 
 def register_callbacks(app, controller, camera_manager=None):
@@ -818,7 +813,7 @@ def register_callbacks(app, controller, camera_manager=None):
         return out
 
     @app.callback(
-        Output('syringe-visual', 'children'),
+        Output({'type': 'pump-syringe', 'index': dash.ALL}, 'children'),
         Input('interval-component', 'n_intervals')
     )
     def update_syringe_visual(n):
@@ -827,10 +822,7 @@ def register_callbacks(app, controller, camera_manager=None):
             raise exceptions.PreventUpdate
         with lock:
             statuses = p.get_all_status()
-        return html.Div(
-            [_syringe_view(statuses[name]) for name in p.list_pumps()],
-            style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'flex-end'}
-        )
+        return [_syringe_view(statuses[name]) for name in p.list_pumps()]
 
     @app.callback(
         Output('routine-dropdown', 'options'),
