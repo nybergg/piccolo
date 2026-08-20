@@ -150,7 +150,7 @@ def _pumps_panel(pump_names):
         dbc.Button("STOP ALL PUMPS", id='pump-stop-all-button', color="danger",
                    className="w-100 mb-2", n_clicks=0),
         html.Div(id='pump-stop-all-status', className="mb-2"),
-        *[_pump_card(name) for name in pump_names],
+        dbc.Row([_pump_card(name) for name in pump_names], className="g-1"),
         html.Hr(),
         html.H6("Routines"),
         dbc.Row([
@@ -173,42 +173,31 @@ def _pumps_panel(pump_names):
 
 
 def _pump_card(name):
-    """One syringe: live graphic on the left, its controls on the right."""
-    return dbc.Card(dbc.CardBody(dbc.Row([
-        # Live syringe graphic (filled by the update_syringe_visual callback)
-        dbc.Col(html.Div(id={'type': 'pump-syringe', 'index': name}),
-                width="auto", style={'paddingRight': '2px'}),
-        # Controls
-        dbc.Col([
-            html.B(name, className="small"),
-            html.Div("idle", id={'type': 'pump-status', 'index': name},
-                     className="small text-muted mb-1"),
-            dbc.RadioItems(
-                id={'type': 'pump-direction', 'index': name},
-                options=[{'label': 'Disp', 'value': 'dispense'},
-                         {'label': 'Asp', 'value': 'aspirate'}],
-                value='dispense', inline=True, className="small mb-1"),
-            dbc.InputGroup([
-                dbc.InputGroupText("Flow", className="p-1 small"),
-                dbc.Input(id={'type': 'pump-flow', 'index': name}, type='number',
-                          value=100, min=0, step="any", size="sm"),
-            ], size="sm", className="mb-1"),
-            dbc.InputGroup([
-                dbc.InputGroupText("Vol", className="p-1 small"),
-                dbc.Input(id={'type': 'pump-volume', 'index': name}, type='number',
-                          value=50, min=0, step="any", size="sm"),
-            ], size="sm", className="mb-1"),
-            dbc.Row([
-                dbc.Col(dbc.Button("Run", id={'type': 'pump-run-flow', 'index': name},
-                                   color="success", size="sm", className="w-100 p-1", n_clicks=0), width=4),
-                dbc.Col(dbc.Button("Dose", id={'type': 'pump-dose', 'index': name},
-                                   color="primary", size="sm", className="w-100 p-1", n_clicks=0), width=4),
-                dbc.Col(dbc.Button("Stop", id={'type': 'pump-stop', 'index': name},
-                                   color="secondary", size="sm", className="w-100 p-1", n_clicks=0), width=4),
-            ], className="g-1"),
-            html.Div(id={'type': 'pump-ack', 'index': name}, className="small text-muted mt-1"),
-        ]),
-    ], className="g-1")), className="mb-2")
+    """One narrow pump column: syringe graphic above compact controls (laid side by side)."""
+    tiny = {'fontSize': '10px'}
+    return dbc.Col([
+        html.Div(id={'type': 'pump-syringe', 'index': name}),
+        html.Div(name, className="text-center fw-bold", style={'fontSize': '10px'}),
+        html.Div("idle", id={'type': 'pump-status', 'index': name},
+                 className="text-center text-muted", style={'fontSize': '8px', 'lineHeight': '1.1'}),
+        dbc.RadioItems(
+            id={'type': 'pump-direction', 'index': name},
+            options=[{'label': 'Disp', 'value': 'dispense'},
+                     {'label': 'Asp', 'value': 'aspirate'}],
+            value='dispense', className="my-1", style=tiny),
+        dbc.Input(id={'type': 'pump-flow', 'index': name}, type='number', value=100,
+                  min=0, step="any", size="sm", placeholder="uL/min", className="mb-1 p-1", style=tiny),
+        dbc.Input(id={'type': 'pump-volume', 'index': name}, type='number', value=50,
+                  min=0, step="any", size="sm", placeholder="uL", className="mb-1 p-1", style=tiny),
+        dbc.Button("Run", id={'type': 'pump-run-flow', 'index': name}, color="success",
+                   size="sm", className="w-100 mb-1 p-1", n_clicks=0, style=tiny),
+        dbc.Button("Dose", id={'type': 'pump-dose', 'index': name}, color="primary",
+                   size="sm", className="w-100 mb-1 p-1", n_clicks=0, style=tiny),
+        dbc.Button("Stop", id={'type': 'pump-stop', 'index': name}, color="secondary",
+                   size="sm", className="w-100 p-1", n_clicks=0, style=tiny),
+        html.Div(id={'type': 'pump-ack', 'index': name}, className="text-muted",
+                 style={'fontSize': '8px'}),
+    ], className="px-1", style={'minWidth': '0'})
 
 
 def _laser_row(index, label):
