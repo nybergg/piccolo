@@ -17,6 +17,8 @@ from scipy.integrate import simpson
 from scipy.signal import find_peaks, peak_widths
 
 from piccolo.controllers.controller import InstrumentController
+from piccolo.drivers.pumps import create_pumps
+from piccolo.pump_routines import RoutinesManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +38,12 @@ class HardwareSimulator(InstrumentController):
                  name='Data_generator',
                  verbose=True,
                  very_verbose=False,
+                 config=None,
                  ):
         # Convert args to attributes
         args = locals()
         args.pop('self')
+        args.pop('config', None)   # handled explicitly below
         for k, v in args.items():
             if v is not None:
                 setattr(self, k, v)
@@ -107,6 +111,11 @@ class HardwareSimulator(InstrumentController):
         # Generation thread state
         self._running = False
 
+        # Syringe pumps — always the simulated backend in sim mode.
+        self.pumps = create_pumps(config)
+        self.routines = RoutinesManager(
+            self.pumps, getattr(config, "routines_path", None) if config else None)
+
         logger.debug("%s: open and ready.", self.name)
 
     ################ Abstract Method Implementations ################
@@ -127,10 +136,13 @@ class HardwareSimulator(InstrumentController):
     def start(self):
         """Start signal generation."""
         self.start_generating()
+        self.pumps.connect()   # simulated motion model
 
     def stop(self):
         """Stop signal generation."""
         self.stop_generating()
+        self.routines.stop_routine()
+        self.pumps.disconnect()
 
     ################ Signal Generation ################
 

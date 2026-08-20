@@ -16,6 +16,20 @@ api_port: 8000                 # Red Pitaya FastAPI server port
 # Laser
 laser_config_path: "../config/laser_config.json"
 
+# Cetoni syringe pumps
+# SAFETY: pumps default to SIMULATED and disabled. Connecting to real pumps requires
+# BOTH pumps_enabled: true AND pumps_simulate: false — do NOT enable with glass
+# syringes loaded. cetoni_deviceconfig must point at the Cetoni Elements config folder.
+pumps_enabled: false
+pumps_simulate: true
+cetoni_deviceconfig: null
+routines_path: "../config/pump_routines.json"
+pumps:
+  - {name: pump0, inner_diameter_mm: 7.28, max_piston_stroke_mm: 60.0, max_volume_ul: 1000.0, max_flow_ul_min: 6000.0, initial_fill_ul: 500.0}
+  - {name: pump1, inner_diameter_mm: 7.28, max_piston_stroke_mm: 60.0, max_volume_ul: 1000.0, max_flow_ul_min: 6000.0, initial_fill_ul: 500.0}
+  - {name: pump2, inner_diameter_mm: 7.28, max_piston_stroke_mm: 60.0, max_volume_ul: 1000.0, max_flow_ul_min: 6000.0, initial_fill_ul: 500.0}
+  - {name: pump3, inner_diameter_mm: 7.28, max_piston_stroke_mm: 60.0, max_volume_ul: 1000.0, max_flow_ul_min: 6000.0, initial_fill_ul: 500.0}
+
 # Data
 buffer_size: 1000       # Max droplet data rows kept in memory
 adc_samples: 4096       # ADC samples per channel per acquisition

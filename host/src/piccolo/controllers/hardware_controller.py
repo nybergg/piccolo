@@ -20,6 +20,8 @@ from piccolo.controllers.controller import InstrumentController
 from piccolo.conversion import raw_to_volts, FPGA_CLK_MHZ
 from piccolo.piccolo_client import PiccoloClient
 from piccolo.drivers.laser import LaserBox
+from piccolo.drivers.pumps import create_pumps
+from piccolo.pump_routines import RoutinesManager
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,12 @@ class HardwareController(InstrumentController):
             self.fpga_registers[f"min_area_thresh[{i}]"] = 1
             self.fpga_registers[f"low_area_thresh[{i}]"] = 255
             self.fpga_registers[f"high_area_thresh[{i}]"] = 0xccddeeff
+
+        # Syringe pumps. SAFETY: create_pumps returns the SIMULATED backend unless
+        # pumps are explicitly enabled AND taken out of simulate mode in config.
+        self.pumps = create_pumps(config)
+        self.routines = RoutinesManager(
+            self.pumps, getattr(config, "routines_path", None) if config else None)
 
     ################ Red Pitaya Setup ################
 
@@ -301,10 +309,13 @@ class HardwareController(InstrumentController):
     def start(self):
         """Start clients (call launch_piccolo_rp separately if needed)."""
         self.start_clients()
+        self.pumps.connect()   # sim: starts motion model; real: gated by create_pumps
 
     def stop(self):
         """Stop streaming, shut down the remote server, and close the laser."""
         logger.info("Initiating shutdown...")
+        self.routines.stop_routine()
+        self.pumps.disconnect()
         self.stop_clients()
         self._stop_servers()
         self.client.close()

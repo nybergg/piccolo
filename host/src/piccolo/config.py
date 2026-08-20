@@ -42,6 +42,15 @@ class PiccoloConfig:
     # Laser config (loaded separately)
     laser_config_path: Optional[str] = None
 
+    # Cetoni syringe pumps
+    # SAFETY: default to SIMULATED + disabled. The real driver is only used when
+    # pumps_enabled is True AND pumps_simulate is False (see drivers.pumps.create_pumps).
+    pumps_enabled: bool = False
+    pumps_simulate: bool = True
+    cetoni_deviceconfig: Optional[str] = None   # Cetoni Elements device-config folder (real HW only)
+    pumps: list = field(default_factory=list)    # per-pump SyringeSpec dicts
+    routines_path: Optional[str] = None          # JSON store for pump routines
+
     @classmethod
     def load(cls, yaml_path: str, rp_login_path: Optional[str] = None) -> "PiccoloConfig":
         """Load config from a YAML file, optionally merging RP login credentials."""

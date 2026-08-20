@@ -96,7 +96,7 @@ def main():
     # Create controller
     if config.simulate:
         logger.info("Starting in SIMULATION mode.")
-        controller = HardwareSimulator(verbose=verbose)
+        controller = HardwareSimulator(config=config, verbose=verbose)
         controller.start()
     else:
         logger.info("Starting with REAL HARDWARE.")
