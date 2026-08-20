@@ -22,6 +22,41 @@ from piccolo.conversion import convert_display_to_raw
 
 logger = logging.getLogger(__name__)
 
+# Syringe fill colors by state (mirrors the CETONI aspirate/dispense color cue).
+_PUMP_STATE_COLORS = {"idle": "#6c757d", "aspirate": "#2b8cff", "dispense": "#f0932b"}
+
+
+def _syringe_view(st):
+    """Vertical syringe graphic (barrel + animated liquid level) for one pump status."""
+    frac = 0.0
+    if st.max_volume_ul > 0:
+        frac = max(0.0, min(1.0, st.fill_level_ul / st.max_volume_ul))
+    state = st.direction if (st.is_pumping and st.direction in ("aspirate", "dispense")) else "idle"
+    color = _PUMP_STATE_COLORS[state]
+    return html.Div([
+        html.Div(st.name, style={'fontSize': '10px', 'textAlign': 'center',
+                                 'whiteSpace': 'nowrap', 'overflow': 'hidden',
+                                 'textOverflow': 'ellipsis'}),
+        html.Div(style={'width': '10px', 'height': '9px', 'background': '#888',
+                        'margin': '0 auto', 'borderRadius': '2px'}),          # plunger cap
+        html.Div(                                                             # barrel
+            html.Div(style={                                                 # liquid column
+                'position': 'absolute', 'bottom': 0, 'left': 0, 'width': '100%',
+                'height': f'{frac * 100:.1f}%', 'backgroundColor': color,
+                'transition': 'height 0.25s linear, background-color 0.2s',
+            }),
+            style={'position': 'relative', 'height': '150px', 'width': '30px',
+                   'border': '2px solid #999', 'borderRadius': '3px 3px 2px 2px',
+                   'overflow': 'hidden', 'backgroundColor': '#111', 'margin': '2px auto'},
+        ),
+        html.Div(style={'width': '2px', 'height': '9px', 'background': '#888',
+                        'margin': '0 auto'}),                                 # needle
+        html.Div(f"{st.fill_level_ul:.0f}/{st.max_volume_ul:.0f} uL",
+                 style={'fontSize': '9px', 'textAlign': 'center', 'color': '#aaa'}),
+        html.Div(state, style={'fontSize': '9px', 'textAlign': 'center',
+                               'color': color, 'fontWeight': 'bold'}),
+    ], style={'flex': '1', 'minWidth': '0', 'padding': '0 2px'})
+
 
 def register_callbacks(app, controller, camera_manager=None):
     """Register all Dash callbacks against the given app and controller."""
@@ -781,6 +816,21 @@ def register_callbacks(app, controller, camera_manager=None):
             out.append(f"{mode} · {st.flow_ul_min:.0f} uL/min · "
                        f"{st.fill_level_ul:.0f}/{st.max_volume_ul:.0f} uL")
         return out
+
+    @app.callback(
+        Output('syringe-visual', 'children'),
+        Input('interval-component', 'n_intervals')
+    )
+    def update_syringe_visual(n):
+        p = _pumps()
+        if not p:
+            raise exceptions.PreventUpdate
+        with lock:
+            statuses = p.get_all_status()
+        return html.Div(
+            [_syringe_view(statuses[name]) for name in p.list_pumps()],
+            style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'flex-end'}
+        )
 
     @app.callback(
         Output('routine-dropdown', 'options'),

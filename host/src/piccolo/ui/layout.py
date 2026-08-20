@@ -40,7 +40,7 @@ def build_layout(camera_available: bool, simulate: bool, pump_names=None) -> dbc
         dbc.Row([
             _controls_column(pump_names),
             _data_column(),
-            _camera_column(camera_available),
+            _camera_column(camera_available, pump_names),
         ]),
     ], fluid=True)
 
@@ -276,8 +276,8 @@ def _scatter_settings_col(plot_num, initial_x, initial_y):
     ])
 
 
-def _camera_column(camera_available):
-    """Right column: camera feed and controls."""
+def _camera_column(camera_available, pump_names):
+    """Right column: camera feed and controls, with a live syringe-level panel below."""
     return dbc.Col([
         html.H5("Camera Controls"),
         html.Img(
@@ -321,4 +321,7 @@ def _camera_column(camera_available):
             ], className="mb-2"),
             html.Div(id='camera-capture-status', className="mt-2"),
         ], style={'display': 'block' if camera_available else 'none'}),
+        html.Hr(),
+        html.H6("Syringe Levels"),
+        html.Div(id='syringe-visual', className="mt-1") if pump_names else html.Span(),
     ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
