@@ -117,3 +117,31 @@ def test_routine_sequence_runs_and_aborts(tmp_path):
         assert not p.get_status("a").is_pumping
     finally:
         p.disconnect()
+
+
+def test_sim_fill_and_empty():
+    p = SimulatedPumps([SyringeSpec(name="a", initial_fill_ul=500,
+                                    max_volume_ul=1000, max_flow_ul_min=600000)])
+    p.connect()
+    try:
+        p.fill("a", 600000)          # fast aspirate to full
+        time.sleep(0.4)
+        assert p.get_status("a").fill_level_ul > 900
+        p.empty("a", 600000)         # fast dispense to empty
+        time.sleep(0.5)
+        assert p.get_status("a").fill_level_ul < 100
+    finally:
+        p.disconnect()
+
+
+def test_sim_set_level_infers_direction():
+    p = SimulatedPumps([SyringeSpec(name="a", initial_fill_ul=200,
+                                    max_volume_ul=1000, max_flow_ul_min=600000)])
+    p.connect()
+    try:
+        p.set_level("a", 800, 600000)   # 200 -> 800 requires aspirate
+        assert p.get_status("a").direction == ASPIRATE
+        time.sleep(0.5)
+        assert 780 <= p.get_status("a").fill_level_ul <= 800
+    finally:
+        p.disconnect()

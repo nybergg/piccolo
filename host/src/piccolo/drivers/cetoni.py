@@ -168,6 +168,20 @@ class CetoniPumps(PumpController):
         logger.info("[cetoni] %s: dose %.1f uL at %.1f uL/min %s",
                     name, abs(volume_ul), flow, direction)
 
+    def set_level(self, name, target_ul, flow_ul_min):
+        pump = self._require(name)
+        spec = self._specs[name]
+        target = max(0.0, min(abs(target_ul), spec.max_volume_ul))
+        flow = min(abs(flow_ul_min), spec.max_flow_ul_min)
+        pump.set_fill_level(target, flow)   # QmixSDK infers direction from current level
+        logger.info("[cetoni] %s: -> level %.1f uL at %.1f uL/min", name, target, flow)
+
+    def fill(self, name, flow_ul_min):
+        self.set_level(name, self._specs[name].max_volume_ul, flow_ul_min)
+
+    def empty(self, name, flow_ul_min):
+        self.set_level(name, 0.0, flow_ul_min)
+
     def stop(self, name):
         pump = self._require(name)
         pump.stop_pumping()

@@ -173,28 +173,38 @@ def _pumps_panel(pump_names):
 
 
 def _pump_card(name):
-    """One narrow pump column: syringe graphic above compact controls (laid side by side)."""
+    """One narrow pump column: syringe graphic + compact CETONI-style controls.
+
+    Flow sign sets direction (+ dispense / - aspirate). Icon buttons: Start, Stop,
+    Fill (aspirate to full), Empty (dispense to 0). Optional volume dosing on Start.
+    """
     tiny = {'fontSize': '10px'}
+
+    def icon_btn(icon, pid, color, title):
+        return dbc.Col(
+            dbc.Button(html.I(className=f"bi {icon}"),
+                       id={'type': pid, 'index': name}, color=color, size="sm",
+                       className="w-100 p-1", n_clicks=0, title=title,
+                       style={'fontSize': '11px'}),
+            width=3, className="px-0")
+
     return dbc.Col([
         html.Div(id={'type': 'pump-syringe', 'index': name}),
         html.Div(name, className="text-center fw-bold", style={'fontSize': '10px'}),
         html.Div("idle", id={'type': 'pump-status', 'index': name},
                  className="text-center text-muted", style={'fontSize': '8px', 'lineHeight': '1.1'}),
-        dbc.RadioItems(
-            id={'type': 'pump-direction', 'index': name},
-            options=[{'label': 'Disp', 'value': 'dispense'},
-                     {'label': 'Asp', 'value': 'aspirate'}],
-            value='dispense', className="my-1", style=tiny),
         dbc.Input(id={'type': 'pump-flow', 'index': name}, type='number', value=100,
-                  min=0, step="any", size="sm", placeholder="uL/min", className="mb-1 p-1", style=tiny),
-        dbc.Input(id={'type': 'pump-volume', 'index': name}, type='number', value=50,
-                  min=0, step="any", size="sm", placeholder="uL", className="mb-1 p-1", style=tiny),
-        dbc.Button("Run", id={'type': 'pump-run-flow', 'index': name}, color="success",
-                   size="sm", className="w-100 mb-1 p-1", n_clicks=0, style=tiny),
-        dbc.Button("Dose", id={'type': 'pump-dose', 'index': name}, color="primary",
-                   size="sm", className="w-100 mb-1 p-1", n_clicks=0, style=tiny),
-        dbc.Button("Stop", id={'type': 'pump-stop', 'index': name}, color="secondary",
-                   size="sm", className="w-100 p-1", n_clicks=0, style=tiny),
+                  step="any", size="sm", placeholder="flow +/-", className="mb-1 p-1", style=tiny),
+        dbc.Input(id={'type': 'pump-volume', 'index': name}, type='number', value=0,
+                  min=0, step="any", size="sm", placeholder="vol (opt)", className="mb-1 p-1", style=tiny),
+        dbc.Row([
+            icon_btn("bi-play-fill", 'pump-start', "success", "Start (+flow dispense / -flow aspirate; vol>0 doses)"),
+            icon_btn("bi-stop-fill", 'pump-stop', "danger", "Stop"),
+            icon_btn("bi-chevron-double-up", 'pump-fill', "secondary", "Fill (aspirate to full)"),
+            icon_btn("bi-chevron-double-down", 'pump-empty', "secondary", "Empty (dispense to 0)"),
+        ], className="g-1"),
+        html.Div("+ dispense / - aspirate", className="text-muted text-center",
+                 style={'fontSize': '7px'}),
         html.Div(id={'type': 'pump-ack', 'index': name}, className="text-muted",
                  style={'fontSize': '8px'}),
     ], className="px-1", style={'minWidth': '0'})

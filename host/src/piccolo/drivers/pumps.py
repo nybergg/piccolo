@@ -49,6 +49,7 @@ class PumpStatus:
     max_volume_ul: float = 0.0
     target_volume_ul: float = 0.0        # for dose mode
     dosed_volume_ul: float = 0.0         # progress within a dose
+    target_level_ul: float = 0.0         # for level (fill/empty) mode
 
     def as_dict(self):
         return asdict(self)
@@ -100,6 +101,21 @@ class PumpController(ABC):
     @abstractmethod
     def dose(self, name: str, volume_ul: float, flow_ul_min: float, direction: str = DISPENSE):
         """Move a fixed ``volume_ul`` at ``flow_ul_min`` then stop."""
+        ...
+
+    @abstractmethod
+    def set_level(self, name: str, target_ul: float, flow_ul_min: float):
+        """Move to a target fill level; direction is inferred from the current level."""
+        ...
+
+    @abstractmethod
+    def fill(self, name: str, flow_ul_min: float):
+        """Aspirate until the syringe is full."""
+        ...
+
+    @abstractmethod
+    def empty(self, name: str, flow_ul_min: float):
+        """Dispense until the syringe is empty."""
         ...
 
     @abstractmethod
@@ -211,6 +227,33 @@ class SimulatedPumps(PumpController):
         logger.info("[sim] %s: dose %.1f uL at %.1f uL/min %s",
                     name, abs(volume_ul), flow, direction)
 
+    def set_level(self, name, target_ul, flow_ul_min):
+        self._check(name)
+        spec = self._specs[name]
+        target = max(0.0, min(abs(target_ul), spec.max_volume_ul))
+        flow = max(0.0, min(abs(flow_ul_min), spec.max_flow_ul_min))
+        with self._lock:
+            st = self._status[name]
+            if flow <= 0 or abs(target - st.fill_level_ul) < 1e-9:
+                st.is_pumping = False
+                st.mode = "idle"
+                st.flow_ul_min = 0.0
+                return
+            st.mode = "level"
+            st.direction = ASPIRATE if target > st.fill_level_ul else DISPENSE
+            st.flow_ul_min = flow
+            st.target_level_ul = target
+            st.is_pumping = True
+        logger.info("[sim] %s: -> level %.1f uL at %.1f uL/min", name, target, flow)
+
+    def fill(self, name, flow_ul_min):
+        self._check(name)
+        self.set_level(name, self._specs[name].max_volume_ul, flow_ul_min)
+
+    def empty(self, name, flow_ul_min):
+        self._check(name)
+        self.set_level(name, 0.0, flow_ul_min)
+
     def stop(self, name):
         self._check(name)
         with self._lock:
@@ -242,21 +285,25 @@ class SimulatedPumps(PumpController):
                     spec = self._specs[st.name]
 
                     if st.mode == "dose":
-                        remaining = st.target_volume_ul - st.dosed_volume_ul
-                        moved = min(moved, remaining)
+                        moved = min(moved, st.target_volume_ul - st.dosed_volume_ul)
+                    elif st.mode == "level":
+                        moved = min(moved, abs(st.target_level_ul - st.fill_level_ul))
 
                     if st.direction == ASPIRATE:
                         new_fill = min(spec.max_volume_ul, st.fill_level_ul + moved)
-                        moved = new_fill - st.fill_level_ul
-                        st.fill_level_ul = new_fill
                     else:  # dispense
                         new_fill = max(0.0, st.fill_level_ul - moved)
-                        moved = st.fill_level_ul - new_fill
-                        st.fill_level_ul = new_fill
+                    moved = abs(new_fill - st.fill_level_ul)
+                    st.fill_level_ul = new_fill
 
                     if st.mode == "dose":
                         st.dosed_volume_ul += moved
                         if st.dosed_volume_ul >= st.target_volume_ul - 1e-9:
+                            st.is_pumping = False
+                            st.mode = "idle"
+                            st.flow_ul_min = 0.0
+                    elif st.mode == "level":
+                        if abs(st.fill_level_ul - st.target_level_ul) < 1e-6:
                             st.is_pumping = False
                             st.mode = "idle"
                             st.flow_ul_min = 0.0
