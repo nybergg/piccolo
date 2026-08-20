@@ -7,6 +7,8 @@ interface as HardwareController without requiring any physical hardware.
 
 import logging
 
+import time
+
 import numpy as np
 import threading
 import pandas as pd
@@ -149,20 +151,27 @@ class HardwareSimulator(InstrumentController):
         while self._running:
             self._generate_signal()
             self._analyze_drops()
+            time.sleep(0.03)  # cap at ~30 Hz; yields the CPU (UI polls at ~4 Hz)
 
     def _generate_signal(self):
         logger.debug("%s: generate signal", self.name)
+        # Drop centers within the acquisition window only. (The old code summed one
+        # gaussian per sample index — 4096 drops, almost all outside the window — which
+        # was ~67M exp() ops/frame and pinned the update rate to ~0.5 Hz.)
+        sigma = 2 * self.drop_width_ms / 2.355
+        centers = np.arange(0.0, self.time_ms[-1] + self.drop_interval_ms,
+                            self.drop_interval_ms)
+        # Vectorized gaussians: shape (n_drops, n_samples)
+        diff = self.time_ms[np.newaxis, :] - centers[:, np.newaxis]
+        gaussians = np.exp(-(diff / sigma) ** 2)
+        n_drops = centers.size
+
         for ch in range(self.num_channels):
-            signal = np.zeros_like(self.time_ms)
-            for t in self.drop_arrival_time_ms:
-                drop_signal = np.exp(
-                    -((self.time_ms - t) / (
-                        2 * self.drop_width_ms / 2.355)) ** 2)
-                drop_signal *= np.random.normal(1, self.drop_signal_cv)
-                signal += drop_signal
-            baseline_noise = np.random.normal(loc=self.signal_baseline,
-                                              scale=self.signal_baseline_cv,
-                                              size=len(self.time_ms))
+            amps = np.random.normal(1.0, self.drop_signal_cv, size=(n_drops, 1))
+            signal = (gaussians * amps).sum(axis=0)
+            baseline_noise = np.random.normal(self.signal_baseline,
+                                              self.signal_baseline_cv,
+                                              size=self.time_ms.size)
             self.signal[ch] = (signal + baseline_noise) * self.sipm_gain[ch]
 
         self.adc1_data = self.signal[0]
@@ -198,16 +207,17 @@ class HardwareSimulator(InstrumentController):
                 results = {"channel": [], "id": [], "timestamp": [],
                            "width": [], "max signal": [], "auc": [],
                            "fwhm": [], "baseline": []}
-                baseline_signals = {}
+                # Baseline mask is identical for every drop this frame — compute once
+                # per channel instead of once per (drop, channel).
+                baseline_indices = np.setdiff1d(
+                    np.arange(len(self.time_ms)), excluded_indices)
+                baselines = [float(np.median(self.signal[ch][baseline_indices]))
+                             for ch in range(self.num_channels)]
                 for i, (left, right, width) in enumerate(
                         zip(valid_left_ips, valid_right_ips, valid_drop_widths),
                         start=1):
                     for ch in range(self.num_channels):
-                        baseline_indices = np.setdiff1d(
-                            np.arange(len(self.signal[ch])), excluded_indices)
-                        baseline_signals[ch] = np.median(
-                            self.signal[ch][baseline_indices])
-                        baseline = np.mean(baseline_signals[ch])
+                        baseline = baselines[ch]
                         drop_signal = self.signal[ch][int(left):int(right)]
                         max_signal = drop_signal.max()
                         drop_time = self.time_ms[int(left)]
