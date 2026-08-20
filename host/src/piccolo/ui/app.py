@@ -28,7 +28,9 @@ def create_app(controller, camera_manager=None, simulate=False):
                     external_stylesheets=external_stylesheets,
                     update_title=None)
 
-    app.layout = build_layout(camera_available=camera_available, simulate=simulate)
+    pump_names = controller.pumps.list_pumps() if getattr(controller, "pumps", None) else []
+    app.layout = build_layout(camera_available=camera_available, simulate=simulate,
+                              pump_names=pump_names)
     register_callbacks(app, controller, camera_manager=camera_manager)
 
     if camera_available:

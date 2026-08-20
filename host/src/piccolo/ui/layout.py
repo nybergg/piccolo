@@ -25,8 +25,9 @@ INITIAL_X_KEY_2 = "cur_droplet_intensity_v[2]"
 INITIAL_Y_KEY_2 = "cur_droplet_intensity_v[3]"
 
 
-def build_layout(camera_available: bool, simulate: bool) -> dbc.Container:
+def build_layout(camera_available: bool, simulate: bool, pump_names=None) -> dbc.Container:
     """Build the full Dash layout."""
+    pump_names = pump_names or []
     return dbc.Container([
         dcc.Store(id='timer-store', data=[]),
         dcc.Store(id='gate-selection-store', data={"x0": [0.0], "y0": [0.0], "x1": [0.0], "y1": [0.0]}),
@@ -37,14 +38,14 @@ def build_layout(camera_available: bool, simulate: bool) -> dbc.Container:
         dbc.Alert("SIMULATION MODE", color="warning", className="text-center mb-0 py-1") if simulate else html.Span(),
         dbc.Row(html.Hr()),
         dbc.Row([
-            _controls_column(),
+            _controls_column(pump_names),
             _data_column(),
             _camera_column(camera_available),
         ]),
     ], fluid=True)
 
 
-def _controls_column():
+def _controls_column(pump_names):
     """Left column: instrument controls and FPGA registers."""
     return dbc.Col([
         html.H5("Instrument Controls"),
@@ -136,8 +137,78 @@ def _controls_column():
                     html.Div(id='fpga-register-div'),
                 ], style={'padding': '10px'})
             ]),
+            dbc.Tab(label="Pumps", children=[
+                _pumps_tab(pump_names)
+            ]),
         ])
     ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
+
+
+def _pumps_tab(pump_names):
+    """Cetoni syringe-pump controls: per-pump flow/dose/stop, E-stop, and routines."""
+    return html.Div([
+        dbc.Alert("Pumps run in SIMULATION unless explicitly enabled in config.",
+                  color="info", className="mt-3 py-1 small"),
+        dbc.Button("STOP ALL PUMPS", id='pump-stop-all-button', color="danger",
+                   className="w-100 mb-2", n_clicks=0),
+        html.Div(id='pump-stop-all-status', className="mb-2"),
+        *[_pump_card(name) for name in pump_names],
+        html.Hr(),
+        html.H6("Routines"),
+        dbc.Row([
+            dbc.Col(dcc.Dropdown(id='routine-dropdown', options=[],
+                                 placeholder="Select routine", clearable=True), width=7),
+            dbc.Col(dbc.Button("Run", id='routine-run-button', color="success",
+                               size="sm", className="w-100", n_clicks=0), width=2),
+            dbc.Col(dbc.Button("Del", id='routine-delete-button', color="secondary",
+                               size="sm", className="w-100", n_clicks=0), width=3),
+        ], className="mb-2"),
+        dbc.Button("Stop routine", id='routine-stop-button', color="warning",
+                   size="sm", className="w-100 mb-2", n_clicks=0),
+        dbc.InputGroup([
+            dbc.Input(id='routine-name-input', placeholder="New preset name", size="sm"),
+            dbc.Button("Save preset", id='routine-save-preset-button', color="primary",
+                       size="sm", n_clicks=0),
+        ], className="mb-2"),
+        html.Div(id='routine-status-div'),
+    ], style={'padding': '10px'})
+
+
+def _pump_card(name):
+    """Controls for a single syringe pump."""
+    return dbc.Card(dbc.CardBody([
+        dbc.Row([
+            dbc.Col(html.B(name), width=5),
+            dbc.Col(html.Div("idle", id={'type': 'pump-status', 'index': name},
+                             className="small text-end text-muted"), width=7),
+        ], className="mb-1"),
+        dbc.RadioItems(
+            id={'type': 'pump-direction', 'index': name},
+            options=[{'label': 'Dispense', 'value': 'dispense'},
+                     {'label': 'Aspirate', 'value': 'aspirate'}],
+            value='dispense', inline=True, className="small mb-1"),
+        dbc.InputGroup([
+            dbc.InputGroupText("Flow", className="p-1 small"),
+            dbc.Input(id={'type': 'pump-flow', 'index': name}, type='number',
+                      value=100, min=0, step="any", size="sm"),
+            dbc.InputGroupText("uL/min", className="p-1 small"),
+        ], className="mb-1"),
+        dbc.InputGroup([
+            dbc.InputGroupText("Vol", className="p-1 small"),
+            dbc.Input(id={'type': 'pump-volume', 'index': name}, type='number',
+                      value=50, min=0, step="any", size="sm"),
+            dbc.InputGroupText("uL", className="p-1 small"),
+        ], className="mb-1"),
+        dbc.Row([
+            dbc.Col(dbc.Button("Run", id={'type': 'pump-run-flow', 'index': name},
+                               color="success", size="sm", className="w-100", n_clicks=0), width=4),
+            dbc.Col(dbc.Button("Dose", id={'type': 'pump-dose', 'index': name},
+                               color="primary", size="sm", className="w-100", n_clicks=0), width=4),
+            dbc.Col(dbc.Button("Stop", id={'type': 'pump-stop', 'index': name},
+                               color="secondary", size="sm", className="w-100", n_clicks=0), width=4),
+        ]),
+        html.Div(id={'type': 'pump-ack', 'index': name}, className="small text-muted mt-1"),
+    ]), className="mb-2")
 
 
 def _laser_row(index, label):

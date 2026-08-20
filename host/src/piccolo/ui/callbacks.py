@@ -691,3 +691,167 @@ def register_callbacks(app, controller, camera_manager=None):
                 return dbc.Alert(msg, color="danger", dismissable=True, duration=4000)
 
         return dash.no_update
+
+    # ------------------------------------------------------------------
+    # Pump callbacks (Cetoni — simulated backend by default; hardware gated in config)
+    # ------------------------------------------------------------------
+    def _pumps():
+        return getattr(controller, "pumps", None)
+
+    def _routines():
+        return getattr(controller, "routines", None)
+
+    @app.callback(
+        Output({'type': 'pump-ack', 'index': dash.MATCH}, 'children'),
+        Input({'type': 'pump-run-flow', 'index': dash.MATCH}, 'n_clicks'),
+        [State({'type': 'pump-flow', 'index': dash.MATCH}, 'value'),
+         State({'type': 'pump-direction', 'index': dash.MATCH}, 'value'),
+         State({'type': 'pump-run-flow', 'index': dash.MATCH}, 'id')],
+        prevent_initial_call=True
+    )
+    def pump_run_flow(n, flow, direction, btn_id):
+        if not n:
+            raise exceptions.PreventUpdate
+        name = btn_id['index']
+        with lock:
+            _pumps().set_flow(name, float(flow or 0), direction or 'dispense')
+        return f"running: {flow} uL/min {direction}"
+
+    @app.callback(
+        Output({'type': 'pump-ack', 'index': dash.MATCH}, 'children', allow_duplicate=True),
+        Input({'type': 'pump-dose', 'index': dash.MATCH}, 'n_clicks'),
+        [State({'type': 'pump-volume', 'index': dash.MATCH}, 'value'),
+         State({'type': 'pump-flow', 'index': dash.MATCH}, 'value'),
+         State({'type': 'pump-direction', 'index': dash.MATCH}, 'value'),
+         State({'type': 'pump-dose', 'index': dash.MATCH}, 'id')],
+        prevent_initial_call=True
+    )
+    def pump_dose(n, volume, flow, direction, btn_id):
+        if not n:
+            raise exceptions.PreventUpdate
+        name = btn_id['index']
+        with lock:
+            _pumps().dose(name, float(volume or 0), float(flow or 0), direction or 'dispense')
+        return f"dosing {volume} uL at {flow} uL/min {direction}"
+
+    @app.callback(
+        Output({'type': 'pump-ack', 'index': dash.MATCH}, 'children', allow_duplicate=True),
+        Input({'type': 'pump-stop', 'index': dash.MATCH}, 'n_clicks'),
+        State({'type': 'pump-stop', 'index': dash.MATCH}, 'id'),
+        prevent_initial_call=True
+    )
+    def pump_stop(n, btn_id):
+        if not n:
+            raise exceptions.PreventUpdate
+        name = btn_id['index']
+        with lock:
+            _pumps().stop(name)
+        return "stopped"
+
+    @app.callback(
+        Output('pump-stop-all-status', 'children'),
+        Input('pump-stop-all-button', 'n_clicks'),
+        prevent_initial_call=True
+    )
+    def pump_stop_all(n):
+        if not n:
+            raise exceptions.PreventUpdate
+        with lock:
+            r = _routines()
+            if r:
+                r.stop_routine()   # also stops all pumps
+            else:
+                _pumps().stop_all()
+        return dbc.Alert("All pumps stopped.", color="danger", duration=3000)
+
+    @app.callback(
+        Output({'type': 'pump-status', 'index': dash.ALL}, 'children'),
+        Input('counter-interval-component', 'n_intervals')
+    )
+    def update_pump_status(n):
+        p = _pumps()
+        if not p:
+            raise exceptions.PreventUpdate
+        with lock:
+            statuses = p.get_all_status()
+        out = []
+        for name in p.list_pumps():
+            st = statuses[name]
+            mode = st.mode if st.is_pumping else "idle"
+            out.append(f"{mode} · {st.flow_ul_min:.0f} uL/min · "
+                       f"{st.fill_level_ul:.0f}/{st.max_volume_ul:.0f} uL")
+        return out
+
+    @app.callback(
+        Output('routine-dropdown', 'options'),
+        Input('counter-interval-component', 'n_intervals')
+    )
+    def refresh_routines(n):
+        r = _routines()
+        if not r:
+            return []
+        return [{'label': f"{x['name']} ({x['type']})", 'value': x['name']}
+                for x in r.list_routines()]
+
+    @app.callback(
+        Output('routine-status-div', 'children'),
+        Input('routine-run-button', 'n_clicks'),
+        State('routine-dropdown', 'value'),
+        prevent_initial_call=True
+    )
+    def routine_run(n, name):
+        if not n or not name:
+            raise exceptions.PreventUpdate
+        with lock:
+            _routines().run(name)
+        return dbc.Alert(f"Running routine '{name}'.", color="success", duration=3000)
+
+    @app.callback(
+        Output('routine-status-div', 'children', allow_duplicate=True),
+        Input('routine-stop-button', 'n_clicks'),
+        prevent_initial_call=True
+    )
+    def routine_stop(n):
+        if not n:
+            raise exceptions.PreventUpdate
+        with lock:
+            _routines().stop_routine()
+        return dbc.Alert("Routine stopped; all pumps halted.", color="warning", duration=3000)
+
+    @app.callback(
+        Output('routine-status-div', 'children', allow_duplicate=True),
+        Input('routine-delete-button', 'n_clicks'),
+        State('routine-dropdown', 'value'),
+        prevent_initial_call=True
+    )
+    def routine_delete(n, name):
+        if not n or not name:
+            raise exceptions.PreventUpdate
+        with lock:
+            _routines().delete(name)
+        return dbc.Alert(f"Deleted routine '{name}'.", color="secondary", duration=3000)
+
+    @app.callback(
+        Output('routine-status-div', 'children', allow_duplicate=True),
+        Input('routine-save-preset-button', 'n_clicks'),
+        [State('routine-name-input', 'value'),
+         State({'type': 'pump-flow', 'index': dash.ALL}, 'value'),
+         State({'type': 'pump-direction', 'index': dash.ALL}, 'value'),
+         State({'type': 'pump-flow', 'index': dash.ALL}, 'id')],
+        prevent_initial_call=True
+    )
+    def routine_save_preset(n, preset_name, flows, directions, ids):
+        if not n:
+            raise exceptions.PreventUpdate
+        if not preset_name or not preset_name.strip():
+            return dbc.Alert("Enter a preset name first.", color="warning", duration=3000)
+        settings = {}
+        for flow, direction, comp_id in zip(flows, directions, ids):
+            settings[comp_id['index']] = {
+                "action": "flow",
+                "flow_ul_min": float(flow or 0),
+                "direction": direction or 'dispense',
+            }
+        with lock:
+            _routines().save_preset(preset_name.strip(), settings)
+        return dbc.Alert(f"Saved preset '{preset_name.strip()}'.", color="success", duration=3000)

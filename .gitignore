@@ -30,3 +30,6 @@ concurrency_tools.py
 
 kendra_notes.md
 PROJECT_PLAN.md
+
+# Pump routines (user-generated at runtime)
+config/pump_routines.json
