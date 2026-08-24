@@ -145,7 +145,7 @@ def _controls_column():
                 ], style={'padding': '10px'})
             ]),
         ])
-    ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
+    ], md=2, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
 
 
 def _pumps_panel(pump_names):
@@ -154,9 +154,15 @@ def _pumps_panel(pump_names):
         html.H6("Pump Controls"),
         dbc.Alert("Pumps run in SIMULATION unless explicitly enabled in config.",
                   color="info", className="py-1 small"),
-        dbc.Button("STOP ALL PUMPS", id='pump-stop-all-button', color="danger",
-                   className="w-100 mb-2", n_clicks=0),
-        html.Div(id='pump-stop-all-status', className="mb-2"),
+        dbc.Row([
+            dbc.Col(dbc.Button([html.I(className="bi bi-play-fill me-1"), "Run all"],
+                               id='pump-run-all-button', color="success", outline=True,
+                               size="sm", className="w-100", n_clicks=0), width=6),
+            dbc.Col(dbc.Button([html.I(className="bi bi-stop-fill me-1"), "Stop all"],
+                               id='pump-stop-all-button', color="danger", outline=True,
+                               size="sm", className="w-100", n_clicks=0), width=6),
+        ], className="g-1 mb-1"),
+        html.Div(id='pump-stop-all-status', className="mb-2 small"),
         dbc.Row([_pump_card(name) for name in pump_names], className="g-1"),
         html.Hr(),
         html.H6("Routines"),
@@ -255,7 +261,7 @@ def _data_column():
         html.H6("SiPM Signals"),
         dcc.Graph(id='signal-plot', style={'height': '25vh'}),
         html.P(id='update-rate-label', children="Update Rate: ...", style={'textAlign': 'center', 'marginTop': '10px'})
-    ], md=6)
+    ], md=5)
 
 
 def _scatter_settings_col(plot_num, initial_x, initial_y):
@@ -331,4 +337,4 @@ def _camera_column(camera_available, pump_names):
         ], style={'display': 'block' if camera_available else 'none'}),
         html.Hr(),
         _pumps_panel(pump_names) if pump_names else html.Span(),
-    ], md=3, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})
+    ], md=5, style={'maxHeight': '90vh', 'overflowY': 'auto', 'paddingRight': '15px'})

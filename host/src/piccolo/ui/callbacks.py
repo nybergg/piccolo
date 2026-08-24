@@ -820,6 +820,30 @@ def register_callbacks(app, controller, camera_manager=None):
         return dbc.Alert("All pumps stopped.", color="danger", duration=3000)
 
     @app.callback(
+        Output('pump-stop-all-status', 'children', allow_duplicate=True),
+        Input('pump-run-all-button', 'n_clicks'),
+        [State({'type': 'pump-flow', 'index': dash.ALL}, 'value'),
+         State({'type': 'pump-volume', 'index': dash.ALL}, 'value'),
+         State({'type': 'pump-flow', 'index': dash.ALL}, 'id')],
+        prevent_initial_call=True
+    )
+    def pump_run_all(n, flows, vols, ids):
+        if not n:
+            raise exceptions.PreventUpdate
+        with lock:
+            p = _pumps()
+            for flow, vol, cid in zip(flows, vols, ids):
+                name = cid['index']
+                f = float(flow or 0)
+                v = float(vol or 0)
+                direction = _direction_from_flow(f)
+                if v > 0:
+                    p.dose(name, v, abs(f), direction)
+                else:
+                    p.set_flow(name, abs(f), direction)
+        return dbc.Alert("All pumps started.", color="success", duration=3000)
+
+    @app.callback(
         Output({'type': 'pump-status', 'index': dash.ALL}, 'children'),
         Input('counter-interval-component', 'n_intervals')
     )
