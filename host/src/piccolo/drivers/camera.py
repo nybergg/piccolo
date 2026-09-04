@@ -67,6 +67,14 @@ class CameraManager:
         """Start the camera grab thread."""
         if self._running:
             return
+        # Make sure a previous grab thread has fully exited (and released the
+        # device) before opening it again — otherwise the new thread hits
+        # "Device is exclusively opened by another client".
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=7)
+            if self._thread.is_alive():
+                logger.warning("Previous camera thread still alive; not starting a new one.")
+                return
         self._running = True
         self._thread = threading.Thread(target=self._grab_loop, daemon=True)
         self._thread.start()
@@ -200,24 +208,34 @@ class CameraManager:
 
             while cam.IsGrabbing() and self._running:
                 try:
-                    grab = cam.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
-                    if grab.GrabSucceeded():
-                        image = converter.Convert(grab)
-                        img = image.GetArray()
+                    # Poll with a short, non-throwing timeout so the loop stays
+                    # responsive to stop()/restart. In hardware-trigger mode a
+                    # timeout just means "no trigger pulse yet" — that is normal,
+                    # not an error, so don't spam the log or block for 5s (which
+                    # previously left the device held open during a restart).
+                    grab = cam.RetrieveResult(1000, pylon.TimeoutHandling_Return)
+                    if grab is None:
+                        continue
+                    try:
+                        if grab.GrabSucceeded():
+                            image = converter.Convert(grab)
+                            img = image.GetArray()
 
-                        # Resize for web display
-                        target_w = 640
-                        aspect = img.shape[0] / img.shape[1]
-                        target_h = int(target_w * aspect)
-                        img_resized = cv2.resize(img, (target_w, target_h))
-                        ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 75])
-                        if ret:
-                            frame_bytes = jpeg.tobytes()
-                            with self._frame_lock:
-                                self._latest_frame_jpeg = frame_bytes
-                            if self._recording:
-                                self._record_frames.append(frame_bytes)
-                    grab.Release()
+                            # Resize for web display
+                            target_w = 640
+                            aspect = img.shape[0] / img.shape[1]
+                            target_h = int(target_w * aspect)
+                            img_resized = cv2.resize(img, (target_w, target_h))
+                            ret, jpeg = cv2.imencode('.jpg', img_resized, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                            if ret:
+                                frame_bytes = jpeg.tobytes()
+                                with self._frame_lock:
+                                    self._latest_frame_jpeg = frame_bytes
+                                if self._recording:
+                                    self._record_frames.append(frame_bytes)
+                        # else: timed out (no frame/trigger yet) — poll again.
+                    finally:
+                        grab.Release()
                 except pylon.GenericException as e:
                     logger.error("Pylon grab error: %s", e)
                     time.sleep(0.1)

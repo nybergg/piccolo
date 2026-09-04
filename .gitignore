@@ -5,6 +5,7 @@ firmware/fpga/project/
 firmware/fpga/TIMING_NOTES.md
 
 # Red Pitaya credentials (sensitive)
+config/rp_login.json
 config/rp_login_desk.json
 config/rp_login_lab.json
 config/rp_login_4CH.json
@@ -23,6 +24,9 @@ venv/
 # Logs and data
 logs/
 data/
+*.log
+# droplet_log / signal_log exports — run data, not source
+*.csv
 
 # Legacy
 concurrency_tools.py

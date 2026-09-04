@@ -81,6 +81,10 @@ def _controls_column():
                                 dbc.Col(html.Div("Frequency:", style={'fontWeight': 'bold'})),
                                 dbc.Col(html.Div("... Hz", id='droplet-frequency-div')),
                             ], align="center"),
+                            dbc.Row([
+                                dbc.Col(html.Div("Gated:", style={'fontWeight': 'bold'})),
+                                dbc.Col(html.Div("...", id='gated-percent-div')),
+                            ], align="center"),
                         ], align="start", width=5),
                     ]),
                     html.Hr(),

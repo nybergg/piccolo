@@ -143,6 +143,39 @@ class InstrumentController(ABC):
             return self.sort_gates
         return {}
 
+    @staticmethod
+    def _droplet_is_gated(classification):
+        """True if a droplet_classification value has the gated (droplet_positive)
+        bit set. The FPGA packs this into bit 15 of the 16-bit field; because the
+        register is a "bool" dtype it arrives as a binary string (e.g. '1000...'),
+        so parse either a string or an int."""
+        if classification is None:
+            return False
+        try:
+            value = int(classification, 2) if isinstance(classification, str) else int(classification)
+        except (ValueError, TypeError):
+            return False
+        return bool((value >> 15) & 1)
+
+    def get_gating_stats(self):
+        """Gating statistics over the current droplet-buffer window.
+
+        Returns a dict: ``total`` droplets in the window, how many are ``gated``
+        (fall inside the sort gate, per the FPGA droplet_positive flag), and that
+        as a ``percent``. ``percent`` is None when the gate flag is unavailable
+        (e.g. the simulator does not populate droplet_classification).
+        """
+        df = self.droplet_data
+        if df is None or df.empty:
+            return {"total": 0, "gated": 0, "percent": None}
+
+        total = len(df)
+        if "droplet_classification" not in df.columns:
+            return {"total": total, "gated": 0, "percent": None}
+
+        gated = int(df["droplet_classification"].map(self._droplet_is_gated).sum())
+        return {"total": total, "gated": gated, "percent": 100.0 * gated / total}
+
     def save_droplet_data_log(self, filename="droplet_log.csv"):
         """Save droplet data buffer to CSV."""
         self.droplet_data.to_csv(filename, index=False)

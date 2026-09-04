@@ -615,11 +615,12 @@ def register_callbacks(app, controller, camera_manager=None):
     @app.callback(
         [Output('droplet-count-div', 'children'),
          Output('sorted-droplet-count-div', 'children'),
-         Output('droplet-frequency-div', 'children')],
+         Output('droplet-frequency-div', 'children'),
+         Output('gated-percent-div', 'children')],
         Input('counter-interval-component', 'n_intervals')
     )
     def update_counters(n):
-        count_str, sorted_str, freq_str = "...", "...", "... Hz"
+        count_str, sorted_str, freq_str, gated_str = "...", "...", "... Hz", "..."
 
         with lock:
             try:
@@ -632,11 +633,19 @@ def register_callbacks(app, controller, camera_manager=None):
                 count_str = f"{droplet_count:,}" if isinstance(droplet_count, int) else str(droplet_count)
                 sorted_str = f"{sorted_droplet_count:,}" if isinstance(sorted_droplet_count, int) else str(sorted_droplet_count)
                 freq_str = f"{droplet_freq:,} Hz" if isinstance(droplet_freq, (int, float)) else str(droplet_freq)
+
+                # Fraction of recently detected droplets that fall inside the sort
+                # gate (over the droplet buffer window, not cumulative).
+                stats = controller.get_gating_stats()
+                if stats["percent"] is None:
+                    gated_str = "N/A"
+                else:
+                    gated_str = f"{stats['percent']:.1f}% ({stats['gated']:,}/{stats['total']:,})"
             except Exception as e:
                 logger.error("Could not update counters from FPGA: %s", e)
-                count_str, sorted_str, freq_str = "Error", "Error", "Error"
+                count_str, sorted_str, freq_str, gated_str = "Error", "Error", "Error", "Error"
 
-        return count_str, sorted_str, freq_str
+        return count_str, sorted_str, freq_str, gated_str
 
     # ------------------------------------------------------------------
     # FPGA register display + set

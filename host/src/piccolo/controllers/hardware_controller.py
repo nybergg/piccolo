@@ -371,7 +371,10 @@ class HardwareController(InstrumentController):
     def droplet_data(self):
         """Build DataFrame from row buffer on read (called by UI at ~4Hz)."""
         with self.data_lock:
-            rows = self._droplet_rows
+            # Copy inside the lock: the streaming thread appends to / trims this
+            # list concurrently, and pd.DataFrame iterates it lazily. Sharing the
+            # live reference races (len mismatch mid-construction).
+            rows = list(self._droplet_rows)
         if not rows:
             return self._empty_droplet_df
         return pd.DataFrame(rows)
